@@ -27,8 +27,6 @@ def get_songs(path):
 learning_rate = .05
 layer_units = 10
 batch_size = 100
-lstm = tf.contrib.rnn.BasicLSTMCell(layer_units)
-state = tf.zeros([batch_size, layer_units])
 
 songs = get_songs('./beeth')
 notes_in_dataset = []
@@ -36,16 +34,7 @@ for i in range(len(songs)):
     print(split_list(songs[i], batch_size))
     notes_in_dataset.append(split_list(songs[i], batch_size))
 
-print(notes_in_dataset)
 
-
-'''
-for current_batch_of_notes in notes_in_dataset:
-    output, state = lstm(current_batch_of_notes, state)
-    
-    
-final_state = state    
-'''
 
 
 
