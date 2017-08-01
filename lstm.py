@@ -5,6 +5,15 @@ import numpy as np
 from midi_manipulation import midiToNoteStateMatrix
 from midi_manipulation import noteStateMatrixToMidi
 
+np.set_printoptions(threshold=np.nan)
+
+def split_list(l, n):
+    list = []
+    for j in range(0, len(l), n):
+        if (j + n < len(l)):
+            list.append(np.array(l[j:j + n]))
+    return list
+
 def get_songs(path):
     '''
     :param path: path to the songs directory
@@ -22,7 +31,9 @@ def get_songs(path):
     return songs
 
 #Hyperparams
-learning_rate = 1
+learning_rate = .1
+#Batch Size
+batch_size = 1000
 #Number of training
 epochs = 10
 #number of features
@@ -37,10 +48,14 @@ songs = get_songs('./beeth')
 #process songs and take timestamp cuts
 input_sequence = []
 expected_output = []
+
 for song in songs:
     for offset in range(len(song) - n_steps - 1):
         input_sequence.append(song[offset:offset + n_steps])
         expected_output.append(song[offset + n_steps + 1])
+
+batched_input = split_list(input_sequence, batch_size)
+batched_expected_output = split_list(expected_output, batch_size)
 
 #Weights biases and placeholders
 w = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1))
@@ -79,9 +94,6 @@ with tf.Session() as sess:
 
     #train for epoch epochs
     for i in tqdm(range(epochs)):
-        sess.run(optimizer, feed_dict={x: input_sequence, y: expected_output})
-        print(sess.run(cost,feed_dict={x: input_sequence, y: expected_output}))
-
-    predictions = sess.run(correct_pred, feed_dict={x: input_sequence, y: expected_output})
-    print(predictions)
-
+        for batch in range(len(batched_input)):
+            sess.run(optimizer, feed_dict={x: batched_input[batch], y: batched_expected_output[batch]})
+        print(sess.run(cost,feed_dict={x: input_sequence, y:expected_output}))
