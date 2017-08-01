@@ -48,7 +48,7 @@ vocab_size = len(dictionary)
 
 # Parameters
 learning_rate = 0.001
-training_iters = 50000
+training_iters = 5000
 display_step = 1000
 n_input = 3
 
@@ -71,10 +71,12 @@ def RNN(x, weights, biases):
 
     # reshape to [1, n_input]
     x = tf.reshape(x, [-1, n_input])
+    y_ = tf.reshape(y, [n_hidden, 6])
 
     # Generate a n_input-element sequence of inputs
     # (eg. [had] [a] [general] -> [20] [6] [33])
     x = tf.split(x,n_input,1)
+    print(x)
 
     # 2-layer LSTM, each layer has n_hidden units.
     # Average Accuracy= 95.20% at 50k iter
@@ -87,13 +89,21 @@ def RNN(x, weights, biases):
 
     # generate prediction
     outputs, states = rnn.static_rnn(rnn_cell, x, dtype=tf.float32)
+    print(outputs)
+    #print(outputs.shape)
+    print(outputs[-1])
+    print(outputs[-1].shape)
+    print(weights['out'])
+    print(weights['out'].shape)
+    print(biases['out'])
+    print(biases['out'].shape)
 
     # there are n_input outputs but
     # we only want the last output
     return tf.matmul(outputs[-1], weights['out']) + biases['out']
 
 pred = RNN(x, weights, biases)
-
+print(pred)
 # Loss and optimizer
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
 optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(cost)
