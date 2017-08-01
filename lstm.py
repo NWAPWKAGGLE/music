@@ -3,6 +3,7 @@ import glob
 from tqdm import tqdm
 import numpy as np
 from midi_manipulation import midiToNoteStateMatrix
+from midi_manipulation import noteStateMatrixToMidi
 
 def get_songs(path):
     '''
@@ -21,7 +22,7 @@ def get_songs(path):
     return songs
 
 #Hyperparams
-learning_rate = .05
+learning_rate = 1
 #Number of training
 epochs = 10
 #number of features
@@ -32,6 +33,14 @@ layer_units = 156
 n_steps = 10
 #Song directore
 songs = get_songs('./beeth')
+
+#process songs and take timestamp cuts
+input_sequence = []
+expected_output = []
+for song in songs:
+    for offset in range(len(song) - n_steps - 1):
+        input_sequence.append(song[offset:offset + n_steps])
+        expected_output.append(song[offset + n_steps + 1])
 
 #Weights biases and placeholders
 w = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1))
@@ -51,6 +60,7 @@ def RNN(x):
 
     outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32)
 
+    #must by transposed to time by examples by features from examples by time by features
     return tf.sigmoid(tf.matmul(tf.transpose(outputs, perm=[1, 0, 2])[-1], w) + b)
 
 pred = RNN(x)
@@ -58,7 +68,7 @@ pred = RNN(x)
 # Cross entropy loss
 cost = tf.losses.softmax_cross_entropy(y, logits=pred)
 #Train with Adam Optimizer
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
+optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(cost)
 
 correct_pred = tf.equal(tf.round(pred), y)
 
@@ -67,13 +77,11 @@ init = tf.global_variables_initializer()
 with tf.Session() as sess:
     sess.run(init)
 
-    input_sequence = []
-    expected_output = []
-    for song in songs:
-        for offset in range(len(song) - n_steps - 1):
-            input_sequence.append(song[offset:offset + n_steps])
-            expected_output.append(song[offset + n_steps + 1])
+    #train for epoch epochs
     for i in tqdm(range(epochs)):
         sess.run(optimizer, feed_dict={x: input_sequence, y: expected_output})
+        print(sess.run(cost,feed_dict={x: input_sequence, y: expected_output}))
 
-    print(sess.run(cost,feed_dict={x: input_sequence, y: expected_output}))
+    predictions = sess.run(correct_pred, feed_dict={x: input_sequence, y: expected_output})
+    print(predictions)
+
