@@ -31,7 +31,7 @@ def get_songs(path):
     return songs
 
 #Hyperparams
-learning_rate = .1
+learning_rate = .005
 #Batch Size
 batch_size = 1000
 #Number of training
@@ -41,7 +41,7 @@ num_features = 156
 #Layers in the hidden lstm layer
 layer_units = 156
 #Number of time steps to use
-n_steps = 10
+n_steps = 100
 #Song directore
 songs = get_songs('./beeth')
 
