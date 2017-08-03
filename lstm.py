@@ -8,9 +8,9 @@ from jrstnets import LSTMNetFactory
 
 #np.set_printoptions(threshold=np.nan)  # TODO: should be np.inf??
 
-model_name = 'lstm_a02'
+model_name = 'lstm_a03'
 song_directory = './beeth'
-learning_rate = .5
+learning_rate = 10
 batch_size = 10
 epochs = 10
 num_features = 156
@@ -54,8 +54,6 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
     expected_output.append(song[1:len(song)-1])
 
 ############################## END PREPROCESSING ############################
-
-
 
 with LSTMNetFactory.load_or_new(model_name, learning_rate, num_features, layer_units, max_seqlen-2) as net:
     tqdm.write(str(net.trained))

@@ -344,15 +344,9 @@ class LSTMNetFactory:
 
         seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
-        lstm_cell = tf.contrib.rnn.BasicLSTMCell(layer_units)
+        lstm_cell = tf.contrib.rnn.LSTMCell(layer_units, use_peepholes=True)
 
         outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
-
-        # outputs = tf.unstack(outputs)
-        # for i in range(len(outputs)):
-        #     outputs[i] = tf.sigmoid(tf.matmul(outputs[i], w)) + b
-        # outputs = tf.stack(outputs, name='y_')
-        # Above gives ValueError: Cannot infer num from shape (?, 6207, 156)
 
         # TODO: Feels hacky...
         outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w) + b), outputs, name='y_')
