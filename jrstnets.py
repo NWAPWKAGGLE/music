@@ -337,22 +337,30 @@ class LSTMNetFactory:
         # x is examples by time by features
         x = tf.placeholder(tf.float32, (None, num_steps, num_features), name='x')
         # y is examples by examples by features
-        y = tf.placeholder(tf.float32, (None, num_features), name='y')
+        y = tf.placeholder(tf.float32, (None, num_steps, num_features), name='y')
 
         w = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
         b = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
 
+        seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
+
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(layer_units)
 
-        outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32)
+        outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
 
-        pred = tf.sigmoid(tf.matmul(tf.transpose(outputs, perm=[1, 0, 2])[-1], w) + b, name='y_')
+        # outputs = tf.unstack(outputs)
+        # for i in range(len(outputs)):
+        #     outputs[i] = tf.sigmoid(tf.matmul(outputs[i], w)) + b
+        # outputs = tf.stack(outputs, name='y_')
+        # Above gives ValueError: Cannot infer num from shape (?, 6207, 156)
 
-        cost = tf.identity(tf.losses.softmax_cross_entropy(y, logits=pred), name='cost')
+        # TODO: Feels hacky...
+        outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w) + b), outputs, name='y_')
+        cost = tf.identity(tf.losses.softmax_cross_entropy(y, logits=outputs), name='cost')
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='optimizer').minimize(cost)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='optimizer').minimize(cost)
 
-        correct_pred = tf.equal(tf.round(pred), y, name='correct')
+        correctness = tf.equal(tf.round(outputs), y, name='correct')
 
         return cls._LSTMNet(model_name)
 
@@ -446,39 +454,40 @@ class LSTMNet:
                                                                                              '_')))
         return self.saver.save(self.sess, s_path)
 
-    def learn(self, xseq, yseq, epochs, report_interval=1000, progress_bar=True):
+    def learn(self, xseq, yseq, seqlens, epochs, report_interval=1000, progress_bar=True):
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
         else:
             iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name)) if progress_bar else range(epochs)
             for i in iter_:
-                self.sess.run('optimizer', feed_dict={'x:0': xseq, 'y:0': yseq})
+                self.sess.run('optimizer', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
                 if i % report_interval == 0:
-                    measured_error = self._error(xseq, yseq)
+                    measured_error = self._error(xseq, yseq, seqlens)
                     self._save(measured_error, i, epochs)
-                    if verbose:
-                        print(measured_error)
+                    print(measured_error)
 
-    def _error(self, xseq, yseq):
+    def _error(self, xseq, yseq, seqlens):
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
         else:
-            return self.sess.run('cost:0', feed_dict={'x:0': xseq, 'y:0': yseq})
+            return self.sess.run('cost:0', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
 
-    def validate(self, xseq, yseq):
+    def validate(self, xseq, yseq, seqlens):
+        # TODO: Meaningful???
         if not self.trained:
             raise RuntimeError("attempted to call validate() on untrained model")
         else:
-            return self._error(xseq, yseq)
+            return self._error(xseq, yseq, seqlens)
 
-    def feed_forward(self, xseq):
+    def feed_forward(self, xseq, seqlens):
+        # TODO: Meaningful???
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
         else:
             if not self.trained:
                 raise RuntimeError("attempted to call validate() on untrained model")
             else:
-                return self.sess.run('y_:0', feed_dict={'x:0': xseq})
+                return self.sess.run('y_:0', feed_dict={'x:0': xseq, 'seq_lens:0': seqlens})
 
 LSTMNetFactory._LSTMNet = LSTMNet
 del LSTMNet
