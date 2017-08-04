@@ -5,8 +5,9 @@ import os
 import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
+import midi_manipulation as mm
 
-verbose = False
+verbose = True
 
 if not verbose:
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -334,35 +335,24 @@ class LSTMNetFactory:
 
     @classmethod
     def new(cls, model_name, learning_rate, num_features, layer_units, num_steps):
-        # x is examples by time by features
         x = tf.placeholder(tf.float32, (None, num_steps, num_features), name='x')
-        # y is examples by examples by features
         y = tf.placeholder(tf.float32, (None, num_steps, num_features), name='y')
 
-        w = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
-        b = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
+        w_out = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
+        b_out = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
 
         seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
-        lstm_cell = tf.contrib.rnn.BasicLSTMCell(layer_units)
+        with tf.variable_scope('lstm_layer{0}'.format(1)):
+            lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+            outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
+        outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), outputs, name='y_')
 
-        outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
-
-        # outputs = tf.unstack(outputs)
-        # for i in range(len(outputs)):
-        #     outputs[i] = tf.sigmoid(tf.matmul(outputs[i], w)) + b
-        # outputs = tf.stack(outputs, name='y_')
-        # Above gives ValueError: Cannot infer num from shape (?, 6207, 156)
-
-        # TODO: Feels hacky...
-        outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w) + b), outputs, name='y_')
         cost = tf.identity(tf.losses.softmax_cross_entropy(y, logits=outputs), name='cost')
-
         optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='optimizer').minimize(cost)
-
         correctness = tf.equal(tf.round(outputs), y, name='correct')
 
-        return cls._LSTMNet(model_name)
+        return cls._LSTMNet(model_name, cell=lstm_cell)
 
     @classmethod
     def load(cls, model_name, file_name=None, save_dir=os.path.join('', 'model_saves')):
@@ -386,13 +376,11 @@ class LSTMNetFactory:
             file_name = os.path.join(save_dir, file_name)
             if not os.path.isfile(file_name):
                 raise ValueError("Model file by name {0} does not exist...".format(model_name))
-        if verbose:
-            print(file_name)
-        return cls._LSTMNet(model_name, file_name)
+        return cls._LSTMNet(model_name, restore_file=file_name)
 
 
 class LSTMNet:
-    def __init__(self, model_name, restore_file=None):
+    def __init__(self, model_name, restore_file=None, cell=None):
         """
         ***PRIVATE CONSTRUCTOR. DO NOT INSTANTIATE DIRECTLY. USE NeuralNet.new or NeuralNet.load.***
         Stores model information and possible file location in preparation for creating session with __enter__.
@@ -402,6 +390,7 @@ class LSTMNet:
         self.managed = False
         self.model_name = model_name
         self.restore_file = restore_file
+        self._cell = cell
         self.trained = (self.restore_file is not None)
 
     def __enter__(self):
@@ -413,6 +402,8 @@ class LSTMNet:
         if self.restore_file is not None:
             saver = tf.train.import_meta_graph(self.restore_file)
             saver.restore(sess, self.restore_file[:-5])
+            layer_size = [var for var in tf.global_variables() if var.name == 'lstm_layer1/rnn/lstm_cell/bias:0'][0].get_shape().as_list()[0] // 4
+            self._cell = tf.contrib.rnn.LSTMCell(layer_size)
             self.saver = saver
             self.trained = True
         else:
@@ -465,6 +456,7 @@ class LSTMNet:
                     measured_error = self._error(xseq, yseq, seqlens)
                     self._save(measured_error, i, epochs)
                     print(measured_error)
+        self.trained = True
 
     def _error(self, xseq, yseq, seqlens):
         if not self.managed:
@@ -479,15 +471,73 @@ class LSTMNet:
         else:
             return self._error(xseq, yseq, seqlens)
 
-    def feed_forward(self, xseq, seqlens):
-        # TODO: Meaningful???
+    def feed_forward(self, inputs, state):
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
         else:
             if not self.trained:
-                raise RuntimeError("attempted to call validate() on untrained model")
+                raise RuntimeError("attempted to call feed_foward() on untrained model")
             else:
-                return self.sess.run('y_:0', feed_dict={'x:0': xseq, 'seq_lens:0': seqlens})
+                return self._cell(inputs, state)
+
+
+    def generate_music_sequences_from_noise(self, num_timesteps, num_songs):
+        if not self.managed:
+            raise RuntimeError("TFRunner must be in with statement")
+        else:
+            if not self.trained:
+                raise RuntimeError("attempted to call _generate_music() on untrained model")
+            else:
+                xseq = tf.truncated_normal((num_songs, num_timesteps, 156), mean=.5, stddev=.1)
+                seqlens = np.empty([num_songs])
+                seqlens.fill(num_timesteps)
+                return self.sess.run('y_', feed_dict={'x:0': xseq.eval(session=self.sess), 'seq_lens:0': seqlens})
+
+    '''def generate_music_sequences_recursively(self, num_timesteps, num_songs, starter, starter_length, layer_units):
+        if not self.managed:
+            raise RuntimeError("TFRunner must be in with statement")
+        else:
+            if not self.trained:
+                raise RuntimeError("attempted to call generate_music_sequences_recursively() on untrained model")
+            else:
+                #input_ = tf.cast(starter, dtype=np.float32)[-1]
+                #input_ = starter = t
+                with tf.variable_scope('lstm_layer1/rnn', reuse=True):
+                    outputs = [tf.zeros([1, 156]),]
+                    state = self._cell.zero_state(1, tf.float32)
+                    for _ in tqdm(range(num_timesteps)):
+                        o, s = self._cell(outputs[-1], state)
+                        state = s
+                        outputs.append(o)
+                    return self.sess.run(outputs[-1])'''
+
+    def generate_music_sequences_recursively(self, num_timesteps, num_songs, starter, starter_length, layer_units):
+        if not self.managed:
+            raise RuntimeError("TFRunner must be in with statement")
+        else:
+            if not self.trained:
+                raise RuntimeError("attempted to call generate_music_sequences_recursively() on untrained model")
+            else:
+                sequence = tf.cast(starter, dtype=tf.float32)
+
+                thesestates = None
+
+                with tf.variable_scope('lstm_layer1', reuse=True):
+                    sequence, thesestates = tf.nn.dynamic_rnn(self._cell, sequence, dtype=tf.float32, initial_state=thesestates)
+
+                sequence = tf.expand_dims(sequence[-1], 0)
+                # Multiply by weights and add bias
+
+                outputs = starter
+
+                for i in tqdm(range(num_timesteps)):
+                    np.append(outputs, np.squeeze(self.sess.run(sequence)))
+                return np.transpose(outputs, (1, 0, 2))
+
+    def generate_midi_from_sequences(self, sequence, dir_path):
+        for i in range(len(sequence)):
+            print(sequence[i])
+            mm.noteStateMatrixToMidi(sequence[i], dir_path+'generated_chord_{}'.format(i))
 
 LSTMNetFactory._LSTMNet = LSTMNet
 del LSTMNet
