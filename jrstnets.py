@@ -6,11 +6,18 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 
+from midi_manipulation import noteStateMatrixToMidi
+
+np.set_printoptions(threshold=np.nan)
+
 verbose = False
 
 if not verbose:
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+def lstm_cell(n_units):
+    lstm = tf.contrib.rnn.LSTMCell(n_units, reuse=tf.get_variable_scope().reuse)
+    return lstm
 
 class DFFNetFactory:
     """
@@ -332,21 +339,23 @@ class LSTMNetFactory:
         except FileNotFoundError:
             return cls.new(model_name, learning_rate, num_features, layer_units, num_steps)
 
+
     @classmethod
     def new(cls, model_name, learning_rate, num_features, layer_units, num_steps):
         # x is examples by time by features
-        x = tf.placeholder(tf.float32, (None, num_steps, num_features), name='x')
+        x = tf.placeholder(tf.float32, (None, None, num_features), name='x')
         # y is examples by examples by features
-        y = tf.placeholder(tf.float32, (None, num_steps, num_features), name='y')
+        y = tf.placeholder(tf.float32, (None, None, num_features), name='y')
 
         w = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
         b = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
 
         seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
-        lstm_cell = tf.contrib.rnn.LSTMCell(layer_units, use_peepholes=True)
+        with tf.variable_scope('lstm') as scope:
+            lstm = lstm_cell(layer_units)
 
-        outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
+        outputs, states = tf.nn.dynamic_rnn(lstm, x, dtype=tf.float32, sequence_length=seq_len)
 
         # TODO: Feels hacky...
         outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w) + b), outputs, name='y_')
@@ -465,6 +474,46 @@ class LSTMNet:
             raise RuntimeError("TFRunner must be in with statement")
         else:
             return self.sess.run('cost:0', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
+
+    def generate_music_sequences_from_noise(self, num_timesteps, num_songs):
+        if not self.managed:
+            raise RuntimeError("TFRunner must be in with statement")
+        else:
+            if not self.trained:
+                raise RuntimeError("attempted to call _generate_music() on untrained model")
+            else:
+                xseq = tf.truncated_normal((num_songs, num_timesteps, 156), mean=.5, stddev=.1)
+                seqlens = np.empty([num_songs])
+                seqlens.fill(num_timesteps)
+                return self.sess.run('y_', feed_dict={'x:0': xseq.eval(session=self.sess), 'seq_lens:0': seqlens})
+
+    def generate_music_sequences_recursively(self, num_timesteps, num_songs, starter, starter_length, layer_units):
+
+        with tf.variable_scope('lstm') as scope:
+
+            sequence = tf.cast(starter, dtype=tf.float32)
+            init = tf.global_variables_initializer()
+
+            lstm = tf.contrib.rnn.LSTMCell(layer_units)
+            #thesestates = tf.expand_dims(lstm.zero_state(num_songs, dtype=tf.float32), 0)
+            next_note = tf.placeholder(tf.float64, (num_songs, 156))
+            thesestates = None
+
+            sequence, thesestates = tf.nn.dynamic_rnn(lstm, tf.expand_dims(sequence[-1], 0), dtype=tf.float32, initial_state=thesestates)
+
+            #Multiply by weights and add bias
+
+            outputs = []
+            init = tf.global_variables_initializer()
+            self.sess.run(init)
+            for i in tqdm(range(num_timesteps)):
+                outputs.append(np.squeeze(self.sess.run(sequence)))
+            return np.transpose(outputs, (1,0,2))
+
+    def generate_midi_from_sequences(self, sequence, dir_path):
+        for i in range(len(sequence)):
+            print(sequence[i])
+            noteStateMatrixToMidi(sequence[i], dir_path+'generated_chord_{}'.format(i))
 
     def validate(self, xseq, yseq, seqlens):
         # TODO: Meaningful???

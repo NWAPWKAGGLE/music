@@ -1,2 +1,6 @@
-model_checkpoint_path: "5.238891124725342__0_10__2017-08-03 09_53_26.621274.ckpt"
-all_model_checkpoint_paths: "5.238891124725342__0_10__2017-08-03 09_53_26.621274.ckpt"
+model_checkpoint_path: "5.094615459442139__9_10__2017-08-03 10_05_19.043134.ckpt"
+all_model_checkpoint_paths: "5.094182968139648__5_10__2017-08-03 10_02_56.298906.ckpt"
+all_model_checkpoint_paths: "5.094549655914307__6_10__2017-08-03 10_03_28.874626.ckpt"
+all_model_checkpoint_paths: "5.094642162322998__7_10__2017-08-03 10_04_01.967570.ckpt"
+all_model_checkpoint_paths: "5.094626426696777__8_10__2017-08-03 10_04_33.006218.ckpt"
+all_model_checkpoint_paths: "5.094615459442139__9_10__2017-08-03 10_05_19.043134.ckpt"
