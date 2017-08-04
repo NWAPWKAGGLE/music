@@ -355,6 +355,7 @@ class LSTMNetFactory:
         with tf.variable_scope('lstm') as scope:
             lstm = lstm_cell(layer_units)
 
+
         outputs, states = tf.nn.dynamic_rnn(lstm, x, dtype=tf.float32, sequence_length=seq_len)
 
         # TODO: Feels hacky...
@@ -469,6 +470,8 @@ class LSTMNet:
                     self._save(measured_error, i, epochs)
                     print(measured_error)
 
+
+
     def _error(self, xseq, yseq, seqlens):
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
@@ -492,27 +495,29 @@ class LSTMNet:
         with tf.variable_scope('lstm') as scope:
 
             sequence = tf.cast(starter, dtype=tf.float32)
-            init = tf.global_variables_initializer()
 
             lstm = tf.contrib.rnn.LSTMCell(layer_units)
-            #thesestates = tf.expand_dims(lstm.zero_state(num_songs, dtype=tf.float32), 0)
-            next_note = tf.placeholder(tf.float64, (num_songs, 156))
+
             thesestates = None
 
-            sequence, thesestates = tf.nn.dynamic_rnn(lstm, tf.expand_dims(sequence[-1], 0), dtype=tf.float32, initial_state=thesestates)
+            sequenceinitial, thesestates = tf.nn.dynamic_rnn(lstm, sequence, dtype=tf.float32, initial_state=thesestates)
+
+            sequence = sequenceinitial[-1]
+
+            sequence, thesestates = lstm(sequence, thesestates)
 
             #Multiply by weights and add bias
 
-            outputs = []
+            outputs = starter
             init = tf.global_variables_initializer()
             self.sess.run(init)
             for i in tqdm(range(num_timesteps)):
-                outputs.append(np.squeeze(self.sess.run(sequence)))
+                np.append(outputs, self.sess.run(sequence))
             return np.transpose(outputs, (1,0,2))
 
     def generate_midi_from_sequences(self, sequence, dir_path):
         for i in range(len(sequence)):
-            print(sequence[i])
+
             noteStateMatrixToMidi(sequence[i], dir_path+'generated_chord_{}'.format(i))
 
     def validate(self, xseq, yseq, seqlens):
