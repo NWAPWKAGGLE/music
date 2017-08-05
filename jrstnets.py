@@ -335,21 +335,29 @@ class LSTMNetFactory:
 
     @classmethod
     def new(cls, model_name, learning_rate, num_features, layer_units, num_steps):
-        x = tf.placeholder(tf.float32, (None, num_steps, num_features), name='x')
+        x = tf.placeholder(tf.float32, (None, None, num_features), name='x')
         y = tf.placeholder(tf.float32, (None, num_steps, num_features), name='y')
-
+        g = tf.placeholder(tf.float32, (None, None, num_features), name='g')
         w_out = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
         b_out = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
 
         seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
+
         with tf.variable_scope('lstm_layer{0}'.format(1)):
             lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+
+        with tf.variable_scope('lstm_layer{0}'.format(1)):
             outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_len)
+            generatedoutputs, states = tf.nn.dynamic_rnn(lstm_cell, g, dtype=tf.float32, sequence_length=seq_len)
+
+        generate = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), generatedoutputs, name='generate')
+
         outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), outputs, name='y_')
 
         cost = tf.identity(tf.losses.softmax_cross_entropy(y, logits=outputs), name='cost')
         optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='optimizer').minimize(cost)
+
         correctness = tf.equal(tf.round(outputs), y, name='correct')
 
         return cls._LSTMNet(model_name, cell=lstm_cell)
@@ -377,7 +385,6 @@ class LSTMNetFactory:
             if not os.path.isfile(file_name):
                 raise ValueError("Model file by name {0} does not exist...".format(model_name))
         return cls._LSTMNet(model_name, restore_file=file_name)
-
 
 class LSTMNet:
     def __init__(self, model_name, restore_file=None, cell=None):
@@ -518,25 +525,17 @@ class LSTMNet:
             if not self.trained:
                 raise RuntimeError("attempted to call generate_music_sequences_recursively() on untrained model")
             else:
-                sequence = tf.cast(starter, dtype=tf.float32)
-
-                thesestates = None
-
-                with tf.variable_scope('lstm_layer1', reuse=True):
-                    sequence, thesestates = tf.nn.dynamic_rnn(self._cell, sequence, dtype=tf.float32, initial_state=thesestates)
-
-                sequence = tf.expand_dims(sequence[-1], 0)
-                # Multiply by weights and add bias
-
                 outputs = starter
-
                 for i in tqdm(range(num_timesteps)):
-                    np.append(outputs, np.squeeze(self.sess.run(sequence)))
+                    print([var.name for var in tf.global_variables()])
+                    next = np.squeeze(self.sess.run('generate:0', feed_dict={'g:0': np.expand_dims(starter[i], 0)}))
+                    print(next)
+                    np.append(outputs, next)
+
                 return np.transpose(outputs, (1, 0, 2))
 
     def generate_midi_from_sequences(self, sequence, dir_path):
         for i in range(len(sequence)):
-            print(sequence[i])
             mm.noteStateMatrixToMidi(sequence[i], dir_path+'generated_chord_{}'.format(i))
 
 LSTMNetFactory._LSTMNet = LSTMNet

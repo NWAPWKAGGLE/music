@@ -8,7 +8,7 @@ from jrstnets import LSTMNetFactory
 
 # np.set_printoptions(threshold=np.nan)  # TODO: should be np.inf??
 
-model_name = 'lstm_b06'
+model_name = 'lstm_b017'
 song_directory = './beeth'
 learning_rate = .5
 batch_size = 10
@@ -62,7 +62,6 @@ starter = np.transpose(input_sequence[:2][:100], (1, 0, 2))
 
 with LSTMNetFactory.load_or_new(model_name, learning_rate, num_features, layer_units, max_seqlen - 2) as net:
     tqdm.write('############# MODEL IS {0}TRAINED #############'.format('' if net.trained else 'UN'))
-    # net.learn(input_sequence, expected_output, seqlens, epochs=2, report_interval=1)
-    # print(net.feed_forward(tf.constant(0, tf.float32, [1, 156]), net._cell.zero_state(1, tf.float32)))
+    net.learn(input_sequence, expected_output, seqlens, epochs=2, report_interval=1)
     sequences = net.generate_music_sequences_recursively(1000, 2, starter, 1, layer_units)
     net.generate_midi_from_sequences(sequences, './musicgenerated/')
