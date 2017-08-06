@@ -3,12 +3,12 @@ import midi_manipulation
 from tqdm import tqdm
 import numpy as np
 
-model_name = 'lstm_c02'
+model_name = 'lstm_c03'
 song_directory = './beeth'
 learning_rate = .5
 batch_size = 10
 load_from_saved = True
-epochs = 1
+epochs = 10
 num_features = 156
 layer_units = 156
 n_steps = 100  # time steps
@@ -30,15 +30,13 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
     input_sequence.append(song[0:len(song) - 2])
     expected_output.append(song[1:len(song) - 1])
 
-starter = np.transpose(input_sequence[:2][:10], (1, 0, 2))
+starter = np.transpose(input_sequence[:1][:10], (1, 0, 2))
 
-lstm = LSTM(model_name, song_directory, num_features, layer_units, batch_size, load_from_saved, max_songs, learning_rate)
+lstm = LSTM(model_name, num_features, layer_units, batch_size, load_from_saved, learning_rate)
 
 lstm.start_sess()
 
-lstm.trainAdversarially(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
-
-print(lstm.generateSequence(starter, 100))
+lstm.trainLSTM(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
 
 lstm.end_sess()
 
