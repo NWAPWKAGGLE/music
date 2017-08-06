@@ -1,3 +1,2 @@
-model_checkpoint_path: "8.848928451538086__1_2__2017-08-04 12_58_04.678083.ckpt"
-all_model_checkpoint_paths: "8.85061264038086__0_2__2017-08-04 12_58_03.468084.ckpt"
-all_model_checkpoint_paths: "8.848928451538086__1_2__2017-08-04 12_58_04.678083.ckpt"
+model_checkpoint_path: "."
+all_model_checkpoint_paths: "."

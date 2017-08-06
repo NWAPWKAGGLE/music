@@ -1,10 +1,11 @@
 import midi
 import numpy as np
+import glob
+from tqdm import tqdm
 
 lowerBound = 24
 upperBound = 102
 span = upperBound - lowerBound
-
 
 def midiToNoteStateMatrix(midifile, squash=True, span=span):
     pattern = midi.read_midifile(midifile)
@@ -110,3 +111,23 @@ def noteStateMatrixToMidi(statematrix, name="example", span=span):
     track.append(eot)
 
     midi.write_midifile("{}.mid".format(name), pattern)
+
+
+def get_songs(path, model_name, max=None):
+    '''
+    :param path: path to the songs directory
+    :return: array of songs w/ timestamp events
+    '''
+    files = glob.glob('{}/*.mid*'.format(path))
+    files = files[:max] if max is not None else files
+    songs = []
+    c = 0
+    for f in tqdm(files, desc='{0}.get_songs({1})'.format(model_name, path)):
+        try:
+
+            song = np.array(midiToNoteStateMatrix(f))
+            songs.append(song)
+
+        except Exception as e:
+            raise e
+    return songs
