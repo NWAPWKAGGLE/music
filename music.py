@@ -3,7 +3,7 @@ import midi_manipulation
 from tqdm import tqdm
 import numpy as np
 
-model_name = 'lstm_e01'
+model_name = 'lstm_f03'
 song_directory = './beeth'
 learning_rate = .5
 batch_size = 10
@@ -34,7 +34,7 @@ starter = np.transpose(input_sequence[:1][:10], (1, 0, 2))
 
 lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
-lstm.start_sess(load_from_saved=True)
+lstm.start_sess(load_from_saved=False)
 
 lstm.trainLSTM(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
 print(lstm.generateSequence(np.zeros([1, 1, 156]), 2))
