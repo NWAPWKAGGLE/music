@@ -6,7 +6,7 @@ import midi_manipulation as mm
 
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05):
+    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, num_layers=3):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -38,15 +38,18 @@ class LSTM:
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
 
-            self.generator_lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+            self.generator_lstm_cell = self.lstm_cell_construct(layer_units, num_layers)
 
             self.G_vars = scope.trainable_variables()
 
         with tf.variable_scope('discriminator') as scope:
-            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units * 2, 1], stddev=.1), name='D_W1')
             self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
 
-            self.discriminator_lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+            with tf.variable_scope('fw'):
+                self.discriminator_lstm_cell_fw = self.lstm_cell_construct(layer_units, num_layers)
+            with tf.variable_scope('bw'):
+                self.discriminator_lstm_cell_bw = self.lstm_cell_construct(layer_units, num_layers)
 
             self.D_vars = scope.trainable_variables()
 
@@ -70,6 +73,13 @@ class LSTM:
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
+
+    def lstm_cell_construct(self, layer_units, num_layers):
+        cell_list = []
+        for i in range(num_layers):
+            with tf.variable_scope('layer_{0}'.format(i)):
+                cell_list.append(tf.contrib.rnn.LSTMCell(layer_units))
+        return tf.contrib.rnn.MultiRNNCell(cell_list)
 
     def start_sess(self, load_from_saved=False):
         """
@@ -106,8 +116,12 @@ class LSTM:
         """
 
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)):
-            discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
-                                                              sequence_length=self.seq_len)
+            #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
+            #                                                  sequence_length=self.seq_len)
+            discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
+                self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32, sequence_length = self.seq_len)
+            discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
+            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], 2)
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
         return discriminator_outputs
@@ -191,7 +205,7 @@ class LSTM:
     def trainAdversarially(self, training_input, training_expected, epochs, report_interval=10, seqlens=None):
         """
 
-        :param training_input:
+        :param training_input: 
         :param training_expected:
         :param epochs:
         :param report_interval:

@@ -3,9 +3,7 @@ import midi_manipulation
 from tqdm import tqdm
 import numpy as np
 
-np.set_printoptions(threshold=np.nan)
-
-model_name = 'lstm_c04'
+model_name = 'lstm_f03'
 
 song_directory = './beeth'
 learning_rate = .5
@@ -44,5 +42,8 @@ lstm.trainLSTM(input_sequence, expected_output, epochs, report_interval=report_i
 sequences = lstm.generate_sequence(starter, 100)
 print(sequences)
 lstm.generate_midi_from_sequences(sequences, './musicgenerated/')
+
 lstm.end_sess()
+
+
 
