@@ -169,7 +169,7 @@ class LSTM:
             oneoutput = self.sess.run(gen,
                                       feed_dict={self.x: np.expand_dims(output[-1], 0),
                                                  self.seq_len: [1 in range(len(starter))]})[-1]
-            np.append(output, oneoutput)
+            output = np.append(output, oneoutput)
         # set states to None in case generate Sequence is used
         self.states = None
         return np.around(np.transpose(output, (1, 0, 2))).astype(int)

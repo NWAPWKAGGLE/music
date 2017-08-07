@@ -37,7 +37,7 @@ lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 lstm.start_sess(load_from_saved=False)
 
 lstm.trainLSTM(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
-print(lstm.generateSequence(np.zeros([1, 1, 156]), 2))
+print(lstm.generateSequence(np.zeros([1, 1, 156]), 100))
 
 lstm.end_sess()
 
