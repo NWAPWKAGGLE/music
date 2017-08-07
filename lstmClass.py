@@ -6,7 +6,7 @@ import midi_manipulation as mm
 
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, load_from_saved=False, learning_rate=.05):
+    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -21,7 +21,6 @@ class LSTM:
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.load_from_saved = load_from_saved
         self.num_features = num_features
         self.layer_units = layer_units
 
@@ -33,25 +32,26 @@ class LSTM:
         self.x = tf.placeholder(tf.float32, (None, None, self.num_features), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
-        self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
-        self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
-
-        self.G_vars = [self.G_W1, self.G_b1]
-
-        self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
-        self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
-
-        self.D_vars = [self.D_W1, self.D_b1]
-
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
-        with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
+        with tf.variable_scope('generator') as scope:
+            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
+
             self.generator_lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+
+            self.G_vars = scope.trainable_variables()
+
+        with tf.variable_scope('discriminator') as scope:
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
+
+            self.discriminator_lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
+
+            self.D_vars = scope.trainable_variables()
 
         self.states = None
 
-        with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)):
-            self.discriminator_lstm_cell = tf.contrib.rnn.LSTMCell(layer_units)
 
         self.G_sample = self.generator(self.x)
 
@@ -71,21 +71,22 @@ class LSTM:
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost)
 
-    def start_sess(self):
+    def start_sess(self, load_from_saved=False):
         """
         starts a tensorflow session to run model functions in, loads in a save model if specified
         :return: None
         """
-        self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver(max_to_keep=20, keep_checkpoint_every_n_hours=0.5)
         self.sess = tf.Session()
 
-        if self.load_from_saved:
+        if load_from_saved:
             self.saver.restore(self.sess,
                                tf.train.latest_checkpoint('./model_saves/{}/'.format(self.model_name, self.model_name)))
             print('loaded from save')
         else:
             init = tf.global_variables_initializer()
             self.sess.run(init)
+            print('new model')
 
     def end_sess(self):
         """
@@ -144,17 +145,20 @@ class LSTM:
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
         # this needs to be fixed to use all the starter values
-        output = [starter[0]]
+        output = starter
+        self.states = None
+        gen = self.generator(self.x, reuse_states=True, time_major=True)
+
 
         for i in tqdm(range(numsteps)):
             # runs the generate with reusing states
-            oneoutput = self.sess.run(self.generator(self.x, reuse_states=True, time_major=True),
+            oneoutput = self.sess.run(gen,
                                       feed_dict={self.x: np.expand_dims(output[-1], 0),
                                                  self.seq_len: [1 in range(len(starter))]})[-1]
             output.append(oneoutput)
         # set states to None in case generate Sequence is used
         self.states = None
-        return np.transpose(output, (1, 0, 2)).astype(int)
+        return np.around(np.transpose(output, (1, 0, 2))).astype(int)
 
     def generate_midi_from_sequences(self, sequence, dir_path):
         """
@@ -188,7 +192,7 @@ class LSTM:
                           feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
 
             if i % report_interval == 0:
-                # save
+                self.saver.save(self.sess, self.model_name, global_step=i)
                 print('G Error {}'.format(
                     self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected,
                                                           self.seq_len: seqlens})))
