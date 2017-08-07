@@ -56,7 +56,7 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
     input_sequence.append(song[0:len(song) - 2])
     expected_output.append(song[1:len(song) - 1])
 
-starter = np.transpose(input_sequence[:2][:100], (1, 0, 2))
+starter = np.transpose(input_sequence[:2][:10], (1, 0, 2))
 
 ############################## END PREPROCESSING ############################
 

@@ -3,22 +3,19 @@ import midi_manipulation
 from tqdm import tqdm
 import numpy as np
 
-<<<<<<< Updated upstream
-model_name = 'lstm_e01'
-=======
 np.set_printoptions(threshold=np.nan)
 
-model_name = 'lstm_c03'
->>>>>>> Stashed changes
+model_name = 'lstm_c04'
+
 song_directory = './beeth'
 learning_rate = .5
 batch_size = 10
 load_from_saved = True
-epochs = 1
+epochs = 10
 num_features = 156
 layer_units = 156
 n_steps = 100  # time steps
-max_songs = None
+max_songs = 3
 report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
@@ -36,20 +33,15 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
     input_sequence.append(song[0:len(song) - 2])
     expected_output.append(song[1:len(song) - 1])
 
-starter = np.transpose(input_sequence[:10][:10], (1, 0, 2))
+starter = np.transpose(input_sequence[1:2][:3], (1, 0, 2))
 
 lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
-lstm.start_sess(load_from_saved=True)
+lstm.start_sess(load_from_saved=load_from_saved)
 
-<<<<<<< Updated upstream
 lstm.trainLSTM(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
-print(lstm.generateSequence(np.zeros([1, 1, 156]), 2))
-=======
-#lstm.trainAdversarially(input_sequence, expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
->>>>>>> Stashed changes
 
-sequences = lstm.generateSequence(starter, 1000)
+sequences = lstm.generate_sequence(starter, 100)
 print(sequences)
 lstm.generate_midi_from_sequences(sequences, './musicgenerated/')
 lstm.end_sess()

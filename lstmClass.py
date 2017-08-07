@@ -31,7 +31,7 @@ class LSTM:
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
         self.x = tf.placeholder(tf.float32, (None, None, self.num_features), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
-
+        self.g = tf.placeholder(tf.float32, (None, self.num_features), name='g')
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
@@ -51,8 +51,7 @@ class LSTM:
             self.D_vars = scope.trainable_variables()
 
         self.states = None
-
-
+        self.gen = self.generator_next(self.g)
         self.G_sample = self.generator(self.x)
 
         self.D_real = self.discriminator(self.x)
@@ -69,7 +68,8 @@ class LSTM:
             var_list=self.G_vars)
         self.cost = tf.identity(tf.losses.softmax_cross_entropy(self.y, logits=self.G_sample), name='cost')
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
-            self.cost)
+            self.cost, var_list=self.G_vars)
+
 
     def start_sess(self, load_from_saved=False):
         """
@@ -122,22 +122,38 @@ class LSTM:
         """
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
             # reuse states if necessary
-            if reuse_states:
-                states = self.states
-            else:
-                states = None
+
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
-                                                          sequence_length=self.seq_len, initial_state=states,
+                                                          sequence_length=self.seq_len,
                                                           time_major=time_major)
-            if reuse_states:
-                self.states = states
+
 
         generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.G_W1) + self.G_b1),
                                       generator_outputs,
                                       name='G_')
         return generator_outputs
 
-    def generateSequence(self, starter, numsteps):
+    def generator_next(self, input):
+        """
+
+        :param input: one timestamp input into lstm cell (1, examples, features)
+        :return: the next timestamp object
+        """
+
+        if not self.states:
+            state = self.generator_lstm_cell.zero_state(tf.cast(tf.size(input)/self.num_features, tf.int32), dtype=tf.float32)
+        else:
+            state = self.states
+
+        with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
+            generator_output, state = self.generator_lstm_cell(input, state)
+
+        self.states = state
+
+        return tf.sigmoid(tf.matmul(generator_output, self.G_W1) + self.G_b1)
+
+
+    def generate_sequence(self, starter, numsteps):
         """
 
         :param starter: (np.ndarray) starter sequence to use for recursive generation
@@ -145,24 +161,21 @@ class LSTM:
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
         # this needs to be fixed to use all the starter values
-        output = starter
-        self.states = None
-        gen = self.generator(self.x, reuse_states=True, time_major=True)
-
-
+        output = np.expand_dims(starter[1], 0)
+        print(output)
         for i in tqdm(range(numsteps)):
             # runs the generate with reusing states
-            oneoutput = self.sess.run(gen,
-                                      feed_dict={self.x: np.expand_dims(output[-1], 0),
+
+            oneoutput = self.sess.run(self.gen,
+                                      feed_dict={self.g: output[-1],
                                                  self.seq_len: [1 for i in range(len(starter[0]))]})[-1]
-            output.append(oneoutput)
+
+            output = np.append(output, np.expand_dims(np.expand_dims(oneoutput, 0), 0), axis=0)
+
+
         # set states to None in case generate Sequence is used
-        self.states = None
-<<<<<<< Updated upstream
-        return np.around(np.transpose(output, (1, 0, 2))).astype(int)
-=======
+
         return np.transpose(np.round(output), (1, 0, 2)).astype(int)
->>>>>>> Stashed changes
 
     def generate_midi_from_sequences(self, sequence, dir_path):
         """
