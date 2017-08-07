@@ -154,11 +154,15 @@ class LSTM:
             # runs the generate with reusing states
             oneoutput = self.sess.run(gen,
                                       feed_dict={self.x: np.expand_dims(output[-1], 0),
-                                                 self.seq_len: [1 in range(len(starter))]})[-1]
+                                                 self.seq_len: [1 for i in range(len(starter[0]))]})[-1]
             output.append(oneoutput)
         # set states to None in case generate Sequence is used
         self.states = None
+<<<<<<< Updated upstream
         return np.around(np.transpose(output, (1, 0, 2))).astype(int)
+=======
+        return np.transpose(np.round(output), (1, 0, 2)).astype(int)
+>>>>>>> Stashed changes
 
     def generate_midi_from_sequences(self, sequence, dir_path):
         """
@@ -174,7 +178,7 @@ class LSTM:
     def trainAdversarially(self, training_input, training_expected, epochs, report_interval=10, seqlens=None):
         """
 
-        :param training_input: 
+        :param training_input:
         :param training_expected:
         :param epochs:
         :param report_interval:
