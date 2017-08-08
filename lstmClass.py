@@ -54,6 +54,7 @@ class LSTM:
             self.D_vars = scope.trainable_variables()
 
         self.states = None
+
         self.gen = self.generator_next(self.g)
         self.G_sample = self.generator(self.x)
 
@@ -126,7 +127,7 @@ class LSTM:
                                           discriminator_outputs, name='D_')
         return discriminator_outputs
 
-    def generator(self, inputs, reuse_states=False, time_major=False):
+    def generator(self, inputs):
         """
 
         :param inputs: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) inputs into the generator lstm
@@ -134,13 +135,12 @@ class LSTM:
         :param time_major: (Bool) whether to set time_major to true for the lstm cell
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
+
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
             # reuse states if necessary
 
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
-                                                          sequence_length=self.seq_len,
-                                                          time_major=time_major)
-
+                                                          sequence_length=self.seq_len)
 
         generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.G_W1) + self.G_b1),
                                       generator_outputs,
@@ -175,20 +175,25 @@ class LSTM:
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
         # this needs to be fixed to use all the starter values
-        output = np.expand_dims(starter[1], 0)
-        print(output)
+
+        output = np.expand_dims(starter[0], 0)
+
         for i in tqdm(range(numsteps)):
             # runs the generate with reusing states
 
-            oneoutput = self.sess.run(self.gen,
-                                      feed_dict={self.g: output[-1],
-                                                 self.seq_len: [1 for i in range(len(starter[0]))]})[-1]
+            oneoutput = self.sess.run(self.gen, feed_dict={self.g: output[-1]})
 
-            output = np.append(output, np.expand_dims(np.expand_dims(oneoutput, 0), 0), axis=0)
-
+            if (len(starter[0][0]) == 1):
+                ## expand oneoutput if there is only one song, otherwise there aren't enough dims to append with output
+                oneoutput = np.expand_dims(oneoutput, 0)
+            if (i >= len(starter)-1):
+                output = np.append(output, np.expand_dims(oneoutput, 0), axis=0)
+            else:
+                print('adding starter')
+                output = np.append(output, np.expand_dims(starter[i+1],0), axis=0)
 
         # set states to None in case generate Sequence is used
-
+        print(len(output))
         return np.transpose(np.round(output), (1, 0, 2)).astype(int)
 
     def generate_midi_from_sequences(self, sequence, dir_path):
