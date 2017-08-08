@@ -402,7 +402,8 @@ class LSTMNet:
         if self.restore_file is not None:
             saver = tf.train.import_meta_graph(self.restore_file)
             saver.restore(sess, self.restore_file[:-5])
-            layer_size = [var for var in tf.global_variables() if var.name == 'lstm_layer1/rnn/lstm_cell/bias:0'][0].get_shape().as_list()[0] // 4
+            layer_size = [var for var in tf.global_variables() if var.name == 'lstm_layer1/rnn/lstm_cell/bias:0'][
+                             0].get_shape().as_list()[0] // 4
             self._cell = tf.contrib.rnn.LSTMCell(layer_size)
             self.saver = saver
             self.trained = True
@@ -480,7 +481,6 @@ class LSTMNet:
             else:
                 return self._cell(inputs, state)
 
-
     def generate_music_sequences_from_noise(self, num_timesteps, num_songs):
         if not self.managed:
             raise RuntimeError("TFRunner must be in with statement")
@@ -519,17 +519,16 @@ class LSTMNet:
                 raise RuntimeError("attempted to call generate_music_sequences_recursively() on untrained model")
             else:
                 sequence = tf.cast(starter, dtype=tf.float32)
-
                 thesestates = None
 
-                with tf.variable_scope('lstm_layer1', reuse=True):
-                    sequence, thesestates = tf.nn.dynamic_rnn(self._cell, sequence, dtype=tf.float32, initial_state=thesestates)
+                with tf.variable_scope('lstm_layer1', reuse=True, custom_getter=c_get):
+                    sequence, thesestates = tf.nn.dynamic_rnn(self._cell, sequence, dtype=tf.float32,
+                                                              initial_state=thesestates)
 
                 sequence = tf.expand_dims(sequence[-1], 0)
-                # Multiply by weights and add bias
+                # TODO: Multiply by weights and add bias?
 
                 outputs = starter
-
                 for i in tqdm(range(num_timesteps)):
                     np.append(outputs, np.squeeze(self.sess.run(sequence)))
                 return np.transpose(outputs, (1, 0, 2))
@@ -537,7 +536,8 @@ class LSTMNet:
     def generate_midi_from_sequences(self, sequence, dir_path):
         for i in range(len(sequence)):
             print(sequence[i])
-            mm.noteStateMatrixToMidi(sequence[i], dir_path+'generated_chord_{}'.format(i))
+            mm.noteStateMatrixToMidi(sequence[i], dir_path + 'generated_chord_{}'.format(i))
+
 
 LSTMNetFactory._LSTMNet = LSTMNet
 del LSTMNet

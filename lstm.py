@@ -2,19 +2,19 @@ import tensorflow as tf
 import glob
 from tqdm import tqdm
 import numpy as np
-from midi_manipulation import midiToNoteStateMatrix
-from midi_manipulation import noteStateMatrixToMidi
-from jrstnets import LSTMNetFactory
+import midi_manipulation as mm
+from adversarial import AdversarialNet
 
 # np.set_printoptions(threshold=np.nan)  # TODO: should be np.inf??
 
-model_name = 'lstm_d04'
+model_name = 'lstm_g01'
 song_directory = './beeth'
 learning_rate = .5
 batch_size = 10
 epochs = 300
 num_features = 156
 layer_units = 156
+num_layers = 3
 n_steps = 100  # time steps
 max_songs = 3
 
@@ -33,7 +33,7 @@ def get_songs(path, max=None):
     for f in tqdm(files, desc='{0}.get_songs({1})'.format(model_name, path)):
         try:
 
-            song = np.array(midiToNoteStateMatrix(f))
+            song = np.array(mm.midiToNoteStateMatrix(f))
             songs.append(song)
 
         except Exception as e:
@@ -60,9 +60,9 @@ starter = np.transpose(input_sequence[:2][:100], (1, 0, 2))
 
 ############################## END PREPROCESSING ############################
 
-with LSTMNetFactory.load_or_new(model_name, learning_rate, num_features, layer_units, max_seqlen - 2) as net:
+with AdversarialNet.load_or_new(model_name, learning_rate, num_features, layer_units, num_layers) as net:
     tqdm.write('############# MODEL IS {0}TRAINED #############'.format('' if net.trained else 'UN'))
-    net.learn(input_sequence, expected_output, seqlens, epochs=2, report_interval=1)
+    net.learn(input_sequence, expected_output, seqlens, epochs=3, report_interval=1)
     # print(net.feed_forward(tf.constant(0, tf.float32, [1, 156]), net._cell.zero_state(1, tf.float32)))
-    #sequences = net.generate_music_sequences_recursively(1000, 2, starter, 1, layer_units)
-    #net.generate_midi_from_sequences(sequences, './musicgenerated/')
+    # sequences = net.generate_music_sequences_recursively(1000, 2, starter, 1, layer_units)
+    # net.generate_midi_from_sequences(sequences, './musicgenerated/')
