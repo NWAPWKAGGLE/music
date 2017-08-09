@@ -8,6 +8,7 @@ upperBound = 102
 span = upperBound - lowerBound
 
 def midiToNoteStateMatrix(midifile, squash=True, span=span):
+
     pattern = midi.read_midifile(midifile)
 
     timeleft = [track[0].tick for track in pattern]
@@ -112,7 +113,6 @@ def noteStateMatrixToMidi(statematrix, name="example", span=span):
 
     midi.write_midifile("{}.mid".format(name), pattern)
 
-
 def get_songs(path, model_name, max=None):
     '''
     :param path: path to the songs directory
@@ -120,9 +120,11 @@ def get_songs(path, model_name, max=None):
     '''
     files = glob.glob('{}/*.mid*'.format(path))
     files = files[:max] if max is not None else files
+    print(files)
     songs = []
     c = 0
     for f in tqdm(files, desc='{0}.get_songs({1})'.format(model_name, path)):
+
         try:
 
             song = np.array(midiToNoteStateMatrix(f))
