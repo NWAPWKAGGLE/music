@@ -6,14 +6,14 @@ import numpy as np
 model_name = 'lstm_h02'
 
 song_directory = './beeth'
-learning_rate = .001
+learning_rate = .1
 batch_size = 10
-load_from_saved = False
-epochs = 1000
+load_from_saved = True
+epochs = 0
 num_features = 156
 layer_units = 156
 n_steps = 30  # time steps
-max_songs = None
+max_songs = 1
 report_interval = 10
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
@@ -33,7 +33,7 @@ lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
-lstm.trainLSTM(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
+lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
 
 sequences = lstm.generate_sequence(1, 30)
 #print(sequences)
