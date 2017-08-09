@@ -24,17 +24,17 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'lstm_i03'
+model_name = 'lstm_i04'
 
 song_directory = './beeth'
-learning_rate = .05
+learning_rate = .1
 batch_size = 0
 load_from_saved = False
 epochs = 300
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
-max_songs = 50
+max_songs = None
 report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
