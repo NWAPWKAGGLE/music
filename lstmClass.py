@@ -71,7 +71,7 @@ class LSTM:
         self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
         self.cost = tf.identity(tf.losses.softmax_cross_entropy(self.y, logits=self.G_sample), name='cost')
@@ -145,10 +145,9 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
 
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(650, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
                                       generator_outputs,
                                       name='G_')
-
         return generator_outputs
 
     def generator_next(self, input):

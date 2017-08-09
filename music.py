@@ -30,10 +30,10 @@ song_directory = './beeth'
 learning_rate = .1
 batch_size = 0
 load_from_saved = False
-epochs = 300
+epochs = 100
 num_features = 156
 layer_units = 156
-n_steps = 10 # time steps
+n_steps = 20 # time steps
 max_songs = None
 report_interval = 1
 
@@ -43,7 +43,7 @@ lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
-for j in range(40):
+for j in range(100):
     expected_output, seqlens = process_data(songs, n_steps)
     lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
     n_steps += 10
