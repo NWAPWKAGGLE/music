@@ -212,7 +212,7 @@ class LSTM:
 
         """
 
-        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval))
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
         train_G = True
         train_D = True
 
@@ -282,6 +282,7 @@ class LSTM:
         except:
             s_path = os.path.join(save_dir, self.model_name, 'E{0}__{1}_{2}__{3}'.format(err, i,
                         epochs, str(datetime.now()).replace(':', '_')))
+        os.makedirs(s_path, exist_ok=True)
         sequences = self.generate_sequence(10, 100)
         for i in range(len(sequences)):
             mm.noteStateMatrixToMidi(sequences[i], os.path.join(s_path, '{0}.mid'.format(i)))
