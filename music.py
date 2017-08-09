@@ -16,12 +16,13 @@ song_directory = './beeth'
 learning_rate = .1
 batch_size = 10
 load_from_saved = True
-epochs = 10
+epochs = 100
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
 max_songs = None
-report_interval = 1
+report_interval = 1000
+
 
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
@@ -31,6 +32,7 @@ seqlens = []
 max_seqlen = max(map(len, songs))
 
 for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
+
 
     if (n_steps):
         song = split_list(song, n_steps)
@@ -43,11 +45,13 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
 
 seqlens = [n_steps for i in range(len(expected_output))]
 
+print(expected_output[0])
+
 lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
-lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=100)
+lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
 
 sequences = lstm.generate_sequence(10, 100)
 #print(sequences)
