@@ -206,7 +206,6 @@ class LSTM:
             mm.noteStateMatrixToMidi(sequence[i], dir_path + 'generated_chord_{}'.format(i))
 
     def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size=None):
-        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval, batch_size))
         """
 
         :param training_input: 
@@ -217,6 +216,8 @@ class LSTM:
         :return:
 
         """
+
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval, batch_size))
         train_G = True
         train_D = True
         if batch_size:
@@ -227,7 +228,7 @@ class LSTM:
         max_seqlen = max(map(len, training_expected))
         for i in iter_:
             if batch_size:
-                for k in range(len(training_expected)):
+                for k in tqdm(range(len(training_expected))):
                     rand = np.random.RandomState(int(time.time()))
 
                     training_input = []
@@ -236,23 +237,9 @@ class LSTM:
                         if (len(training_expected[k][j]) < max_seqlen):
                             training_input[j] = np.pad(training_input[j],
                                                        pad_width=(
-                                                       ((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
+                                                           ((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
                                                        mode='constant',
                                                        constant_values=0)
-
-
-                    G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                                  self.seq_len: seqlens[k]})
-                    D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                                  self.seq_len: seqlens[k]})
-                    if G_err < .7 * D_err:
-                        train_G = False
-                    else:
-                        train_G = True
-                    if D_err < .7 * G_err:
-                        train_D = False
-                    else:
-                        train_D = True
 
                     if train_G:
                         self.sess.run('G_optimizer',
@@ -293,6 +280,20 @@ class LSTM:
                 if train_D:
                     self.sess.run('D_optimizer',
                                   feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+
+            if batch_size:
+                G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[-1],
+                                                              self.seq_len: seqlens[-1]})
+                D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[-1],
+                                                              self.seq_len: seqlens[-1]})
+                if G_err < .7 * D_err:
+                    train_G = False
+                else:
+                    train_G = True
+                if D_err < .7 * G_err:
+                    train_D = False
+                else:
+                    train_D = True
 
 
 
