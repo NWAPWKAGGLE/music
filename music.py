@@ -53,10 +53,6 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
 
-sequences = lstm.generate_sequence(10, 100)
-#print(sequences)
-lstm.generate_midi_from_sequences(sequences, './musicgenerated/')
-
 lstm.end_sess()
 
 

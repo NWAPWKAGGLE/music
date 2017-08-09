@@ -209,12 +209,15 @@ class LSTM:
         :return:
 
         """
+
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval, batch_size))
         train_G = True
         train_D = True
 
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name))
         max_seqlen = max(map(len, training_expected))
         for i in iter_:
+
             rand = np.random.RandomState(int(time.time()))
 
             training_input = []
@@ -246,20 +249,44 @@ class LSTM:
                 self.sess.run('D_optimizer',
                           feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
 
-            if i % report_interval == 0:
 
-                dir = './model_saves/{}/{}_{}'.format(self.model_name, self.model_name, 'end_sess')
-                self.saver.save(self.sess, dir)
+            if i % report_interval == 0:
+                self._save((G_err, D_err), i, epochs)
+                self._progress_sequence((G_err, D_err), i, epochs)
+                tqdm.write('Sequence generated')
                 tqdm.write('G Error {}'.format(
                     G_err))
                 tqdm.write('D Error {}'.format(
                     D_err))
-                tqdm.write('Error {}'.format(
-                    self.sess.run(self.cost,
-                                  feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-                ))
+
+    def _save(self, err, i, epochs, save_dir='./model_saves'):
+        try:
+            g_err, d_err = err
+            s_path = os.path.join(save_dir, self.model_name, 'G{0}_D{1}__{2}_{3}__{4}.ckpt'.format(g_err, d_err, i,
+                        epochs, str(datetime.now()).replace(':', '_')))
+            return self.saver.save(self.sess, s_path)
+        except:
+            s_path = os.path.join(save_dir, self.model_name, 'E{0}__{1}_{2}__{3}.ckpt'.format(err, i,
+                                                                                                   epochs, str(
+                    datetime.now()).replace(':', '_')))
+            return self.saver.save(self.sess, s_path)
+
+    def _progress_sequence(self, err, i, epochs, save_dir='./progress_sequences'):
+        s_path = None
+        try:
+            g_err, d_err = err
+            s_path = os.path.join(save_dir, self.model_name, 'G{0}_D{1}__{2}_{3}__{4}'.format(g_err, d_err, i,
+                        epochs, str(datetime.now()).replace(':', '_')))
+        except:
+            s_path = os.path.join(save_dir, self.model_name, 'E{0}__{1}_{2}__{3}'.format(err, i,
+                        epochs, str(datetime.now()).replace(':', '_')))
+        sequences = lstm.generate_sequence(10, 100)
+        for i in range(len(sequence)):
+            mm.noteStateMatrixToMidi(sequence[i], os.path.join(s_path, '{0}.mid'.format(i)))
+
 
     def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name))
         max_seqlen = max(map(len, training_expected))
         for i in iter_:
@@ -283,9 +310,11 @@ class LSTM:
                           feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
 
             if i % report_interval == 0:
-                print('Error {}'.format(
-                    self.sess.run(self.cost,
+                err = self.sess.run(self.cost,
                                   feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-                ))
+                self._save(err, i, epochs)
+                self._progress_sequence(err, i, epochs)
+                tqdm.write('Sequence generated')
+                tqdm.write('Error {}'.format(err))
 
 
