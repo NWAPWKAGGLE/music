@@ -82,7 +82,8 @@ class LSTM:
         cell_list = []
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)):
-                cell_list.append(tf.contrib.rnn.LSTMCell(layer_units))
+                cell = tf.contrib.rnn.LSTMCell(layer_units)
+                cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
         return tf.contrib.rnn.MultiRNNCell(cell_list)
 
     def start_sess(self, load_from_saved=False):
@@ -144,11 +145,10 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
 
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.0105))),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
                                       generator_outputs,
                                       name='G_')
-        cond = tf.less(generator_outputs, tf.fill(tf.shape(generator_outputs), .02))
-        #generator_outputs = tf.where(cond, tf.zeros(tf.shape(generator_outputs)), tf.ones(tf.shape(generator_outputs)))
+
         return generator_outputs
 
     def generator_next(self, input):
