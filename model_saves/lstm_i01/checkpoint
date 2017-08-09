@@ -1,0 +1,2 @@
+model_checkpoint_path: "lstm_i01_end_sess"
+all_model_checkpoint_paths: "lstm_i01_end_sess"

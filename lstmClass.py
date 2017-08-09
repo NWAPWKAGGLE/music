@@ -143,7 +143,7 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
 
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(100, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
                                       generator_outputs,
                                       name='G_')
         cond = tf.less(generator_outputs, tf.fill(tf.shape(generator_outputs), .02))
