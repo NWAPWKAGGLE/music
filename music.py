@@ -45,6 +45,7 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 for j in range(100):
     expected_output, seqlens = process_data(songs, n_steps)
+    lstm.trainLSTM(expected_output, 20, report_interval=report_interval, seqlens=seqlens)
     lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
     n_steps += 10
 
