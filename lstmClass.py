@@ -68,10 +68,10 @@ class LSTM:
         self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
         self.G_loss = -tf.reduce_mean(tf.log(self.D_fake), name='G_loss')
 
-        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
         self.cost = tf.identity(tf.losses.softmax_cross_entropy(self.y, logits=self.G_sample), name='cost')
@@ -132,7 +132,6 @@ class LSTM:
 
     def generator(self, inputs):
         """
-
         :param inputs: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) inputs into the generator lstm
         :param reuse_states: (Bool) whether to reuse previous lstm states, for use when generating long sequences recursively. default
         :param time_major: (Bool) whether to set time_major to true for the lstm cell
@@ -145,7 +144,7 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
 
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(1000, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.0105))),
                                       generator_outputs,
                                       name='G_')
         cond = tf.less(generator_outputs, tf.fill(tf.shape(generator_outputs), .02))
@@ -216,7 +215,7 @@ class LSTM:
         train_G = True
         train_D = True
 
-        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name))
+        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
         for i in iter_:
 
@@ -290,7 +289,7 @@ class LSTM:
 
     def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
-        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name))
+        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
         for i in iter_:
             rand = np.random.RandomState(int(time.time()))
