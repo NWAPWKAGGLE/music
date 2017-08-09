@@ -2,6 +2,8 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 import time
+import os
+from datetime import datetime
 
 np.set_printoptions(threshold=np.nan)
 
@@ -210,7 +212,7 @@ class LSTM:
 
         """
 
-        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval, batch_size))
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1} with batch size'.format(epochs, report_interval))
         train_G = True
         train_D = True
 
@@ -280,9 +282,9 @@ class LSTM:
         except:
             s_path = os.path.join(save_dir, self.model_name, 'E{0}__{1}_{2}__{3}'.format(err, i,
                         epochs, str(datetime.now()).replace(':', '_')))
-        sequences = lstm.generate_sequence(10, 100)
-        for i in range(len(sequence)):
-            mm.noteStateMatrixToMidi(sequence[i], os.path.join(s_path, '{0}.mid'.format(i)))
+        sequences = self.generate_sequence(10, 100)
+        for i in range(len(sequences)):
+            mm.noteStateMatrixToMidi(sequences[i], os.path.join(s_path, '{0}.mid'.format(i)))
 
 
     def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):

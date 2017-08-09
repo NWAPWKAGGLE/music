@@ -14,16 +14,14 @@ model_name = 'lstm_i01'
 
 song_directory = './beeth'
 learning_rate = .1
-batch_size = 10
+batch_size = 0
 load_from_saved = True
-epochs = 100
+epochs = 0
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
-max_songs = None
-report_interval = 1000
-
-
+max_songs = 1
+report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
@@ -44,8 +42,6 @@ for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
     expected_output = expected_output + song
 
 seqlens = [n_steps for i in range(len(expected_output))]
-
-print(expected_output[0])
 
 lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 
