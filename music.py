@@ -24,7 +24,7 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'lstm_i04'
+model_name = 'lstm_i05'
 
 song_directory = './beeth'
 learning_rate = .1
@@ -34,7 +34,7 @@ epochs = 100
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
-max_songs = 50
+max_songs = 30
 report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
@@ -44,7 +44,9 @@ lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate)
 lstm.start_sess(load_from_saved=load_from_saved)
 
 for j in range(100):
+
     expected_output, seqlens = process_data(songs, n_steps)
+    lstm.trainAdversarially(20, epochs, report_interval=report_interval, seqlens=seqlens)
     lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
     n_steps += 10
 
