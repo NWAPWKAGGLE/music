@@ -24,16 +24,16 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'lstm_j01'
+model_name = 'lstm_k01'
 
 song_directory = './beeth'
-learning_rate = .1
+learning_rate = .01
 batch_size = 0
 load_from_saved = False
 epochs = 500
 num_features = 156
 layer_units = 156
-n_steps = 10 # time steps
+n_steps = 100 # time steps
 max_songs = None
 report_interval = 10
 
@@ -46,8 +46,6 @@ lstm.start_sess(load_from_saved=load_from_saved)
 for j in range(100):
 
     expected_output, seqlens = process_data(songs, n_steps)
-
-    lstm.trainLSTM(expected_output, 20, report_interval=report_interval, seqlens=seqlens)
 
     lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens)
     n_steps += 10

@@ -82,10 +82,10 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
         self.cost = tf.identity(tf.losses.softmax_cross_entropy(self.y, logits=self.G_sample), name='cost')
