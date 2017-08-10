@@ -39,34 +39,48 @@ class LSTM:
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
+            self.G_vars = []
+
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
 
-            self.generator_lstm_cell = self.lstm_cell_construct(layer_units, num_layers)
+            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
-            self.G_vars = scope.trainable_variables()
+            self.G_vars.extend(gen_vars)
+            self.G_vars.extend(scope.trainable_variables())
 
         with tf.variable_scope('discriminator') as scope:
+            self.D_vars = []
+
             self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
             self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
 
-            with tf.variable_scope('fw'):
-                self.discriminator_lstm_cell_fw = self.lstm_cell_construct(layer_units, num_layers)
-            with tf.variable_scope('bw'):
-                self.discriminator_lstm_cell_bw = self.lstm_cell_construct(layer_units, num_layers)
+            with tf.variable_scope('fw') as subscope:
+                self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
+            with tf.variable_scope('bw') as subscope:
+                self.discriminator_lstm_cell_bw, bw_vars = self.lstm_cell_construct(layer_units, num_layers)
 
-            self.D_vars = scope.trainable_variables()
+            self.D_vars.extend(fw_vars)
+            self.D_vars.extend(bw_vars)
+            self.D_vars.extend(scope.trainable_variables())
 
         self.states = None
 
-        self.gen = self.generator_next(self.g)
-        self.G_sample = self.generator(self.x)
+        self.G_sample, g_vars = self.generator(self.x)
+        
+        self.G_vars.extend(g_vars)
 
-        self.D_real = self.discriminator(self.x)
-        self.D_fake = self.discriminator(self.G_sample)
+        self.D_real, _ = self.discriminator(self.x) # returns same d_vars; unnecessary to use this return value here
+        self.D_fake, d_vars = self.discriminator(self.G_sample)
+
+        self.D_vars.extend(d_vars)
 
         self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
         self.G_loss = -tf.reduce_mean(tf.log(self.D_fake), name='G_loss')
+
+
+        print(self.G_vars)
+        print(self.D_vars)
 
         self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
             self.D_loss,
@@ -80,11 +94,13 @@ class LSTM:
 
     def lstm_cell_construct(self, layer_units, num_layers):
         cell_list = []
+        var_list = []
         for i in range(num_layers):
-            with tf.variable_scope('layer_{0}'.format(i)):
+            with tf.variable_scope('layer_{0}'.format(i)) as scope:
                 cell = tf.contrib.rnn.LSTMCell(layer_units)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
-        return tf.contrib.rnn.MultiRNNCell(cell_list)
+                var_list.extend(scope.trainable_variables())
+        return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
 
     def start_sess(self, load_from_saved=False):
         """
@@ -120,16 +136,17 @@ class LSTM:
         (single values denoting real or fake samples)
         """
 
-        with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)):
+        with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
             #                                                  sequence_length=self.seq_len)
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
             discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
+            d_vars = scope.trainable_variables()
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
-        return discriminator_outputs
+        return discriminator_outputs, d_vars
 
     def generator(self, inputs):
         """
@@ -139,16 +156,16 @@ class LSTM:
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
-        with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
+        with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
             # reuse states if necessary
 
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
-
+            g_vars = scope.trainable_variables()
         generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(100, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.015))),
                                       generator_outputs,
                                       name='G_')
-        return generator_outputs
+        return generator_outputs, g_vars
 
     def generator_next(self, input):
         """
@@ -162,12 +179,12 @@ class LSTM:
         else:
             state = self.states
 
-        with tf.variable_scope('generator_lstm_layer{0}'.format(1)):
+        with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
             generator_output, state = self.generator_lstm_cell(input, state)
-
+            g_vars = scope.trainable_variables()
         self.states = state
 
-        return tf.sigmoid(tf.matmul(generator_output, self.G_W1) + self.G_b1)
+        return tf.sigmoid(tf.matmul(generator_output, self.G_W1) + self.G_b1), g_vars
 
     def generate_sequence(self, num_songs, num_steps):
         """

@@ -24,12 +24,12 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'lstm_i05'
+model_name = 'lstm_j01'
 
 song_directory = './beeth'
 learning_rate = .1
 batch_size = 0
-load_from_saved = True
+load_from_saved = False
 epochs = 100
 num_features = 156
 layer_units = 156
