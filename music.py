@@ -29,12 +29,12 @@ model_name = 'lstm_i04'
 song_directory = './beeth'
 learning_rate = .1
 batch_size = 0
-load_from_saved = False
+load_from_saved = True
 epochs = 100
 num_features = 156
 layer_units = 156
-n_steps = 20 # time steps
-max_songs = None
+n_steps = 10 # time steps
+max_songs = 50
 report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)

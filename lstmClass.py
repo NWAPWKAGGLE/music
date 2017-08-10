@@ -126,7 +126,7 @@ class LSTM:
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
-            discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
+            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
         return discriminator_outputs
@@ -145,7 +145,7 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
 
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(650, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.01))),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(100, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.015))),
                                       generator_outputs,
                                       name='G_')
         return generator_outputs
