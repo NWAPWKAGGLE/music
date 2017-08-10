@@ -162,7 +162,7 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.scalar_mul(100, tf.add(tf.nn.softmax(tf.matmul(output, self.G_W1) + self.G_b1), -.015))),
+        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1) + self.G_b1,
                                       generator_outputs,
                                       name='G_')
         return generator_outputs, g_vars
