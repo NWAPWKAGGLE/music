@@ -78,11 +78,10 @@ class LSTM:
         self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
         self.G_loss = -tf.reduce_mean(tf.log(self.D_fake), name='G_loss')
 
-
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.01, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -142,7 +141,7 @@ class LSTM:
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
-            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
+            discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
             d_vars = scope.trainable_variables()
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
@@ -250,12 +249,13 @@ class LSTM:
                                                           self.seq_len: seqlens})
             D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected,
                                                           self.seq_len: seqlens})
-            if G_err < .7 * D_err:
+            if G_err < .9 * D_err:
                 train_G = False
             else:
                 train_G = True
-            if D_err < .7 * G_err:
+            if D_err < .9 * G_err:
                 train_D = False
+                print('stopping D')
             else:
                 train_D = True
 
