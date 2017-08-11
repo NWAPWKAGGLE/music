@@ -25,9 +25,9 @@ def process_data(songs_, n_steps_):
     seqlens = [n_steps_ for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'adv_a01'
+model_name = 'adv_a02'
 
-song_directory = './beeth'
+song_directory = './classical'
 max_songs = 3
 
 batch_size = 0
@@ -42,6 +42,6 @@ report_interval = 1
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 expected_output, seqlens = process_data(songs, time_steps)
 
-with AdversarialNet.new(model_name, num_features, layer_units, num_layers) as net:
+with AdversarialNet.load_or_new(model_name, num_features, layer_units, num_layers) as net:
     tqdm.write('############# MODEL IS {0}TRAINED #############'.format('' if net.trained else 'UN'))
-    net.learn_multiple_epochs(expected_output, seqlens, g_learning_rate=0.01, d_learning_rate=0.007, epochs=1, report_interval=1)
+    net.learn_interactive(expected_output, seqlens)
