@@ -30,7 +30,7 @@ def process_data(songs, n_steps):
 model_name = 'C_RNN_GAN_C1'
 
 song_directory = './beeth'
-learning_rate_G = .09
+learning_rate_G = .06
 #learning_rate_D = .01
 batch_size = 0
 load_from_saved = False

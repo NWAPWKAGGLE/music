@@ -7,6 +7,14 @@ from datetime import datetime
 
 np.set_printoptions(threshold=np.nan)
 
+def split_list(l, n):
+    list = []
+    for j in range(0, len(l), n):
+        if (j+n < len(l)):
+            list.append(np.array(l[j:j+n]))
+    return list
+
+
 import midi_manipulation as mm
 
 class LSTM:
@@ -81,7 +89,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=.0008, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=.05, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -192,7 +200,7 @@ class LSTM:
         for i in range(len(sequence)):
             mm.noteStateMatrixToMidi(sequence[i], dir_path + 'generated_chord_{}'.format(i))
 
-    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None):
+    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100):
         """
 
         :param training_input: 
@@ -213,37 +221,43 @@ class LSTM:
         for i in iter_:
 
             rand = np.random.RandomState(int(time.time()))
-
-            training_input = []
-            for j in range(len(training_expected)):
-                training_input.append(rand.normal(.5, .2, (len(training_expected[j]), 156)))
-                if (len(training_expected[j]) < max_seqlen):
-                    training_input[j] = np.pad(training_input[j],
-                                               pad_width=(((0, max_seqlen - len(training_expected[j])), (0, 0))),
+            idx = np.arange(len(training_expected))
+            np.random.shuffle(idx)
+            training_expected = [training_expected[i] for i in idx]
+            seqlens = [seqlens[i] for i in idx]
+            training_expected = split_list(training_expected, batch_size)
+            seqlens = split_list(seqlens, batch_size)
+            for k in tqdm(range(len(training_expected))):
+                training_input = []
+                for j in range(len(training_expected[k])):
+                    training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 156)))
+                    if (len(training_expected[k][j]) < max_seqlen):
+                        training_input[j] = np.pad(training_input[j],
+                                               pad_width=(((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
                                                mode='constant',
                                                constant_values=0)
 
-            G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected,
-                                                          self.seq_len: seqlens})
-            D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected,
-                                                          self.seq_len: seqlens})
-            if G_err < .9 * D_err:
-                print('stopping G')
-                train_G = False
-            else:
-                train_G = True
-            if D_err < .9 * G_err:
-                train_D = False
-                print('stopping D')
-            else:
-                train_D = True
+                G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
+                                                          self.seq_len: seqlens[k]})
+                D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
+                                                          self.seq_len: seqlens[k]})
+                if G_err < .9 * D_err:
+                    print('stopping G')
+                    train_G = False
+                else:
+                    train_G = True
+                if D_err < .9 * G_err:
+                    train_D = False
+                    print('stopping D')
+                else:
+                 train_D = True
 
-            if train_G:
-                self.sess.run('G_optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-            if train_D:
-                self.sess.run('D_optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+                if train_G:
+                    self.sess.run('G_optimizer',
+                          feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+                if train_D:
+                    self.sess.run('D_optimizer',
+                          feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
 
 
             if i % report_interval == 0:
