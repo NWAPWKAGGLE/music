@@ -30,12 +30,12 @@ class LSTM:
 
         self.sess = None
         self.saver = None
-
+        self.writer = None
         # build model - this part should probably be abstracted somehow,
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
         self.x = tf.placeholder(tf.float32, (None, None, self.num_features), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
-        self.g = tf.placeholder(tf.float32, (None, self.num_features), name='g')
+
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
@@ -81,15 +81,12 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.005, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.003, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
-        self.cost = tf.identity(tf.losses.softmax_cross_entropy(self.y, logits=self.G_sample), name='cost')
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
-            self.cost, var_list=self.G_vars)
 
     def lstm_cell_construct(self, layer_units, num_layers):
         cell_list = []
@@ -108,7 +105,7 @@ class LSTM:
         """
         self.saver = tf.train.Saver(max_to_keep=20, keep_checkpoint_every_n_hours=0.5)
         self.sess = tf.Session()
-
+        self.writer = tf.summary.FileWriter("output", self.sess.graph)
         if load_from_saved:
             self.saver.restore(self.sess,
                                tf.train.latest_checkpoint('./model_saves/{}/'.format(self.model_name)))
@@ -123,7 +120,7 @@ class LSTM:
         ends the tensorflow sess, saves the model
         :return: None
         """
-
+        self.writer.close()
         dir = self.saver.save(self.sess, './model_saves/{}/{}_{}'.format(self.model_name, self.model_name, 'end_sess'))
         self.sess.close()
 
@@ -165,25 +162,6 @@ class LSTM:
                                       generator_outputs,
                                       name='G_')
         return generator_outputs, g_vars
-
-    def generator_next(self, input):
-        """
-
-        :param input: one timestamp input into lstm cell (1, examples, features)
-        :return: the next timestamp object
-        """
-
-        if not self.states:
-            state = self.generator_lstm_cell.zero_state(tf.cast(tf.size(input)/self.num_features, tf.int32), dtype=tf.float32)
-        else:
-            state = self.states
-
-        with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
-            generator_output, state = self.generator_lstm_cell(input, state)
-            g_vars = scope.trainable_variables()
-        self.states = state
-
-        return tf.sigmoid(tf.matmul(generator_output, self.G_W1) + self.G_b1), g_vars
 
     def generate_sequence(self, num_songs, num_steps):
         """
@@ -250,6 +228,7 @@ class LSTM:
             D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected,
                                                           self.seq_len: seqlens})
             if G_err < .9 * D_err:
+                print('stopping G')
                 train_G = False
             else:
                 train_G = True
@@ -298,41 +277,7 @@ class LSTM:
             s_path = os.path.join(save_dir, self.model_name, 'E{0}__{1}_{2}__{3}'.format(err, i,
                         epochs, str(datetime.now()).replace(':', '_')))
         os.makedirs(s_path, exist_ok=True)
-        sequences = self.generate_sequence(10, 100)
+        sequences = self.generate_sequence(1, 50)
         for i in range(len(sequences)):
             mm.noteStateMatrixToMidi(sequences[i], os.path.join(s_path, '{0}.mid'.format(i)))
-
-
-    def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
-        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
-        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
-        max_seqlen = max(map(len, training_expected))
-        for i in iter_:
-            rand = np.random.RandomState(int(time.time()))
-
-            training_input = []
-            for j in range(len(training_expected)):
-                training_input.append(rand.normal(.5, .2, (len(training_expected[j]), 156)))
-                if (len(training_expected[j]) < max_seqlen):
-                    training_input[j] = np.pad(training_input[j], pad_width=(((0, max_seqlen - len(training_expected[j])), (0, 0))), mode='constant',
-                                  constant_values=0)
-
-            idx = np.arange(len(training_input))
-            np.random.shuffle(idx)
-            idx = idx.tolist()
-
-            training_input = [training_input[i] for i in idx]
-            training_expected = [training_expected[i] for i in idx]
-            seqlens = [seqlens[i] for i in idx]
-            self.sess.run('optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-
-            if i % report_interval == 0:
-                err = self.sess.run(self.cost,
-                                  feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-                self._save(err, i, epochs)
-                self._progress_sequence(err, i, epochs)
-                tqdm.write('Sequence generated')
-                tqdm.write('Error {}'.format(err))
-
 

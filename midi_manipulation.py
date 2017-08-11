@@ -22,7 +22,7 @@ def midiToNoteStateMatrix(midifile, squash=True, span=span):
     statematrix.append(state)
     condition = True
     while condition:
-        if time % (pattern.resolution / 12) == (pattern.resolution / 24):
+        if time % (pattern.resolution / 4) == (pattern.resolution / 8):
             # Crossed a note boundary. Create a new state, defaulting to holding notes
             oldstate = state
             state = [[oldstate[x][0], 0] for x in range(span)]
@@ -81,7 +81,7 @@ def noteStateMatrixToMidi(statematrix, name="example", span=span):
     pattern.append(track)
 
     span = upperBound - lowerBound
-    tickscale = 40
+    tickscale = 55
 
     lastcmdtime = 0
     prevstate = [[0, 0] for x in range(span)]
