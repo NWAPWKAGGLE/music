@@ -81,7 +81,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.003, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.03, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -138,7 +138,7 @@ class LSTM:
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
-            discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
+            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
             d_vars = scope.trainable_variables()
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')

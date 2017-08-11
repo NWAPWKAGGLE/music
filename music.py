@@ -27,7 +27,7 @@ def process_data(songs, n_steps):
 model_name = 'C_RNN_GAN_A1'
 
 song_directory = './beeth'
-learning_rate_G = .1
+learning_rate_G = .05
 #learning_rate_D = .01
 batch_size = 0
 load_from_saved = False
@@ -36,7 +36,7 @@ num_features = 156
 layer_units = 156
 n_steps = 50 # time steps
 max_songs = 30
-report_interval = 10
+report_interval = 50
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
