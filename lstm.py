@@ -1,68 +1,49 @@
-import tensorflow as tf
-import glob
+from adversarial import AdversarialNet
+import midi_manipulation
 from tqdm import tqdm
 import numpy as np
-import midi_manipulation as mm
-from adversarial import AdversarialNet
 
-# np.set_printoptions(threshold=np.nan)  # TODO: should be np.inf??
+def split_list(l, n):
+    list_ = []
+    for j in range(0, len(l), n):
+        if (j+n < len(l)):
+            list_.append(np.array(l[j:j+n]))
+    return list_
 
-model_name = 'lstm_g01'
+def process_data(songs_, n_steps_):
+    expected_output = []
+    min_seqlen = min(map(len, songs_))
+    if min_seqlen < n_steps_:
+        n_steps_ = min_seqlen
+
+    for song in tqdm(songs_, desc="{0}.pad/seq".format(model_name), ascii=True):
+        if (n_steps_):
+            song = split_list(song, n_steps_)
+
+        expected_output = expected_output + song
+
+    seqlens = [n_steps_ for i in range(len(expected_output))]
+    return expected_output, seqlens
+
+model_name = 'adv_a01'
+
 song_directory = './beeth'
-learning_rate = .5
-batch_size = 10
-epochs = 300
+learning_rate_G = .06
+#learning_rate_D = .01
+batch_size = 0
+epochs = 5
 num_features = 156
 layer_units = 156
-num_layers = 3
-n_steps = 100  # time steps
-max_songs = 3
+n_steps = 50 # time steps
+max_songs = None
+report_interval = 4
+
+songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
 
-######################## PREPROCESSING ############################
-
-def get_songs(path, max=None):
-    '''
-    :param path: path to the songs directory
-    :return: array of songs w/ timestamp events
-    '''
-    files = glob.glob('{}/*.mid*'.format(path))
-    files = files[:max] if max is not None else files
-    songs = []
-    c = 0
-    for f in tqdm(files, desc='{0}.get_songs({1})'.format(model_name, path)):
-        try:
-
-            song = np.array(mm.midiToNoteStateMatrix(f))
-            songs.append(song)
-
-        except Exception as e:
-            raise e
-    return songs
 
 
-songs = get_songs(song_directory, max_songs)
-
-input_sequence = []
-expected_output = []
-seqlens = []
-max_seqlen = max(map(len, songs))
-
-for song in tqdm(songs, desc="{0}.pad/seq".format(model_name)):
-    seqlens.append(len(song) - 1)
-    if (len(song) < max_seqlen):
-        song = np.pad(song, pad_width=(((0, max_seqlen - len(song)), (0, 0))), mode='constant', constant_values=0)
-
-    input_sequence.append(song[0:len(song) - 2])
-    expected_output.append(song[1:len(song) - 1])
-
-starter = np.transpose(input_sequence[:2][:100], (1, 0, 2))
-
-############################## END PREPROCESSING ############################
 
 with AdversarialNet.load_or_new(model_name, learning_rate, num_features, layer_units, num_layers) as net:
     tqdm.write('############# MODEL IS {0}TRAINED #############'.format('' if net.trained else 'UN'))
-    net.learn(input_sequence, expected_output, seqlens, epochs=3, report_interval=1)
-    # print(net.feed_forward(tf.constant(0, tf.float32, [1, 156]), net._cell.zero_state(1, tf.float32)))
-    # sequences = net.generate_music_sequences_recursively(1000, 2, starter, 1, layer_units)
-    # net.generate_midi_from_sequences(sequences, './musicgenerated/')
+    net.learn(input_sequence, seqlens, epochs=3, report_interval=1)
