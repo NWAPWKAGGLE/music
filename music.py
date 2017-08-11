@@ -32,17 +32,17 @@ learning_rate_G = .06
 #learning_rate_D = .01
 batch_size = 1000
 load_from_saved = False
-epochs = 10
+epochs = 30
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
-rbm_epochs = 1
-max_songs = 30
-report_interval = 4
+rbm_epochs = 10
+max_songs = 100
+report_interval = 10
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
-lstm = LSTM(model_name, num_features, layer_units, batch_size, n_hidden_RBM=500, learning_rate=learning_rate_G, )
+lstm = LSTM(model_name, num_features, layer_units, batch_size, n_hidden_RBM=300, learning_rate=learning_rate_G, )
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
@@ -55,7 +55,7 @@ for j in range(100):
 
     expected_output, seqlens = process_data(songs, n_steps)
 
-    lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=1000)
+    lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
     n_steps += 1
 
 lstm.end_sess()

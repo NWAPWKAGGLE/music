@@ -332,17 +332,31 @@ class LSTM:
                 G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
                                                           self.seq_len: seqlens[k]})
                 D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                          self.seq_len: seqlens[k]})
-                if G_err < .9 * D_err:
+                                                       self.seq_len: seqlens[k]})
+                fake_count = self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+                real_count = self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+
+                G_stop_count = 0
+                D_stop_count = 0
+
+                if fake_count > .6:
                     print('stopping G')
                     train_G = False
+                    G_stop_count += 1
                 else:
                     train_G = True
-                if D_err < .9 * G_err:
+                    G_stop_count = 0
+                if fake_count < .43:
                     train_D = False
                     print('stopping D')
+                    D_stop_count += 1
+
                 else:
-                 train_D = True
+                    train_D = True
+                    D_stop_count = 0
+
+                if real_count > .9:
+                    break
 
                 if train_G:
                     self.sess.run('G_optimizer',
@@ -353,9 +367,9 @@ class LSTM:
 
 
             if i % report_interval == 0:
-                tqdm.write('Real Count {}'.format(self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[-1], self.seq_len: seqlens[-1]})))
+                tqdm.write('Real Count {}'.format(real_count))
 
-                tqdm.write('Fake Count {}'.format(self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[-1], self.seq_len: seqlens[-1]})))
+                tqdm.write('Fake Count {}'.format(fake_count))
                 self._save((G_err, D_err), i, epochs)
                 self._progress_sequence((G_err, D_err), i, epochs)
                 tqdm.write('Sequence generated')
