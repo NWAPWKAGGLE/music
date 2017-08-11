@@ -29,6 +29,7 @@ if not verbose:
 # D_optimizer = tf.train.someoptimizer(D_lr).minimize(D_loss, var_list = G_vars)
 # G_optimizer = tf.train.someoptimizer(G_lr).minimize(G_loss, var_list = D_vars)
 
+
 def custom_getter(default_getter, name, *args, **kwargs):
     try:
         return default_getter(name, *args, **kwargs)
@@ -36,20 +37,11 @@ def custom_getter(default_getter, name, *args, **kwargs):
         try:
             return [var for var in tf.global_variables() if var.name == name + ':0']
         except ValueError:
-            raise ValueError('Variable {0} not found. All variables: '.format(name, [var.name for var in tf.global_variables()]))
+            raise ValueError('Variable {0} not found. All variables: '.format(name,
+                                                                              [var.name for var in tf.global_variables()]))
 
 
 class AdversarialNet:
-    @staticmethod
-    def _construct_cell(layer_units, num_layers):
-        cell_list = []
-        var_list = []
-        for i in range(num_layers):
-            with tf.variable_scope('layer_{0}'.format(i)) as scope:
-                cell_list.append(tf.contrib.rnn.LSTMCell(layer_units))
-                var_list.extend(scope.trainable_variables())
-        return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
-
     @classmethod
     def load_or_new(cls, model_name, learning_rate, num_features, layer_units, num_layers, file_name=None,
                     save_dir=os.path.join('', 'model_saves')):
@@ -60,61 +52,52 @@ class AdversarialNet:
 
     @classmethod
     def new(cls, model_name, learning_rate, num_features, layer_units, num_layers):
-        with tf.name_scope('placeholders') as ns:
+        with tf.name_scope('placeholders'):
             x = tf.placeholder(tf.float32, (None, None, num_features), name='x')
             y = tf.placeholder(tf.float32, (None, None, num_features), name='y')
             seq_lens = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
-
         with tf.variable_scope('generator') as scope:
-            g_vars = []
-            w_out = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
-            b_out = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
+            g_w_out = tf.Variable(tf.truncated_normal([layer_units, num_features], stddev=.1), name='w')
+            g_b_out = tf.Variable(tf.truncated_normal([num_features], stddev=.1), name='b')
 
-            lstm_cell, lstm_cell_vars = cls._construct_cell(layer_units, num_layers)
-            g_vars.extend(lstm_cell_vars)
+            g_lstm_cell = cls._construct_cell(layer_units, num_layers)
 
-            outputs, _ = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32, sequence_length=seq_lens)
-            gen_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), outputs, name='g_')
-            g_vars.extend(scope.trainable_variables())
+            g_outputs, _ = tf.nn.dynamic_rnn(g_lstm_cell, x, dtype=tf.float32, sequence_length=seq_lens)
+            tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, g_w_out) + g_b_out), g_outputs, name='output')
 
-            print(g_vars)
+            g_vars = scope.trainable_variables()
 
         with tf.variable_scope('discriminator') as scope:
+            d_w_out = tf.Variable(tf.truncated_normal([layer_units * 2, 1], stddev=.1), name='w')
+            d_b_out = tf.Variable(tf.truncated_normal([1], stddev=.1), name='b')
+
+            with tf.variable_scope('fw'):
+                lstm_cell_fw = cls._construct_cell(layer_units, num_layers)
+            with tf.variable_scope('bw'):
+                lstm_cell_bw = cls._construct_cell(layer_units, num_layers)
+
             d_vars = []
-            w_out = tf.Variable(tf.truncated_normal([layer_units * 2, 1], stddev=.1), name='w')
-            b_out = tf.Variable(tf.truncated_normal([1], stddev=.1), name='b')
-
-            with tf.variable_scope('fw') as subscope:
-                lstm_cell_fw, fw_vars = cls._construct_cell(layer_units, num_layers)
-                d_vars.extend(fw_vars)
-            with tf.variable_scope('bw') as subscope:
-                lstm_cell_bw, bw_vars = cls._construct_cell(layer_units, num_layers)
-                d_vars.extend(bw_vars)
-
             with tf.variable_scope('real') as subscope:
-                outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_cell_fw, lstm_cell_bw, x, dtype=tf.float32,
+                r_outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_cell_fw, lstm_cell_bw, x, dtype=tf.float32,
                                                              sequence_length=seq_lens)
-                outputs_fw, outputs_bw = outputs
-                outputs = tf.concat([outputs_fw, outputs_bw], 2)
-                real_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), outputs,
-                                         name='r_')
+                r_outputs_fw, r_outputs_bw = r_outputs
+                r_outputs = tf.concat([r_outputs_fw, r_outputs_bw], 2)
+                real_outputs = tf.map_fn(lambda r_output: tf.sigmoid(tf.matmul(r_output, d_w_out) + d_b_out), r_outputs,
+                                         name='output')
                 d_vars.extend(subscope.trainable_variables())
 
             with tf.variable_scope('fake') as subscope:
-                outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_cell_fw, lstm_cell_bw, x, dtype=tf.float32,
+                f_outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_cell_fw, lstm_cell_bw, x, dtype=tf.float32,
                                                              sequence_length=seq_lens)
-                outputs_fw, outputs_bw = outputs
-                outputs = tf.concat([outputs_fw, outputs_bw], 2)
-                fake_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, w_out) + b_out), outputs,
-                                         name='f_')
+                f_outputs_fw, f_outputs_bw = f_outputs
+                f_outputs = tf.concat([f_outputs_fw, f_outputs_bw], 2)
+                fake_outputs = tf.map_fn(lambda f_output: tf.sigmoid(tf.matmul(f_output, d_w_out) + d_b_out), f_outputs,
+                                         name='output')
                 d_vars.extend(subscope.trainable_variables())
-
             d_vars.extend(scope.trainable_variables())
 
-            print(d_vars)
-
-        with tf.variable_scope('optimizers') as scope:
+        with tf.name_scope('optimizers') as scope:
             d_cost = tf.identity(tf.reduce_mean(tf.log(real_outputs) + tf.log(1. - fake_outputs)), name='d_cost')
             g_cost = tf.identity(tf.reduce_mean(tf.log(fake_outputs)), name='g_cost')
 
@@ -156,18 +139,15 @@ class AdversarialNet:
             self.saver = tf.train.Saver()
             sess.run(tf.global_variables_initializer())
         self.sess = sess
+        self.writer = tf.summary.FileWriter("tensorboard", self.sess.graph)
         self.managed = True
-        self.summary_writer = tf.summary.FileWriter('./tensorboard/runs', sess.graph)
         return self
 
     def __exit__(self, type_, value, traceback):
         self.managed = False
         self.saver = None
+        self.writer.close()
         self.sess.close()
-
-    @staticmethod
-    def _get_cell(units):
-        return tf.contrib.rnn.LSTMCell(units)
 
     def _save(self, g_err, d_err, i, epochs, save_dir='./model_saves'):
         if not self.managed:
@@ -177,39 +157,55 @@ class AdversarialNet:
                         epochs, str(datetime.now()).replace(':', '_')))
             return self.saver.save(self.sess, s_path)
 
-    def learn(self, xseq, yseq, seqlens, epochs, report_interval=None, progress_bar=True):
+    @staticmethod
+    def _construct_cell(layer_units, num_layers):
+        cell_list = []
+        for i in range(num_layers):
+            with tf.variable_scope('layer_{0}'.format(i)) as scope:
+                cell_list.append(tf.contrib.rnn.LSTMCell(layer_units))
+        return tf.contrib.rnn.MultiRNNCell(cell_list)
+
+    def learn(self, x_seq, y_seq, seq_lens, epochs, report_interval=None, progress_bar=True):
         report_interval = report_interval or epochs ** 0.5
-        if not self.managed:
-            raise RuntimeError("TFRunner must be in with statement")
-        else:
-            iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name)) if progress_bar else range(epochs)
-            for i in iter_:
-                self.sess.run('optimizers/g_opt', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
-                self.sess.run('optimizers/d_opt', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
-                if i % report_interval == 0:
-                    g_error = self.sess.run('optimizers/g_cost', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
-                    d_error = self.sess.run('optimizers/d_cost', feed_dict={'x:0': xseq, 'y:0': yseq, 'seq_lens:0': seqlens})
-                    self._save(g_error, d_error, i, epochs)
-                    print('Generator Error: {0}'.format(g_error))
-                    print('Discriminator Error: {0}'.format(d_error))
+
+        assert self.managed
+
+        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name)) if progress_bar else range(epochs)
+        feed_dict = {
+            'placeholders/x:0': x_seq,
+            'placeholders/y:0': y_seq,
+            'placeholders/seq_lens:0': seq_lens
+        }
+
+        for i in iter_:
+            self.sess.run('optimizers/g_opt', feed_dict=feed_dict)
+            self.sess.run('optimizers/d_opt', feed_dict=feed_dict)
+            if i % report_interval == 0:
+                g_error = self.sess.run('optimizers/g_cost', feed_dict=feed_dict)
+                d_error = self.sess.run('optimizers/d_cost', feed_dict=feed_dict)
+                self._save(g_error, d_error, i, epochs)
+                print('Generator Error: {0}'.format(g_error))
+                print('Discriminator Error: {0}'.format(d_error))
+
         self.trained = True
 
-    def generate(self, starter, iterations, progress_bar=True):
-        if not self.managed:
-            raise RuntimeError('AdversarialNet must be in with statement')
-        else:
-            if not self.trained:
-                raise RuntimeError('Net must be trained before generation')
-            else:
-                with tf.variable_scope('generator', reuse=True, custom_getter=custom_getter):
-                    lstm_cell = tf.contrib.rnn.LSTMCell(tf.get_variable('rnn/lstm_cell/bias').get_shape().as_list()[0] // 4)
-                    iter_ = tqdm(range(iterations), desc="{0}.generate".format(self.model_name) if progress_bar else range(iterations))
-                    out = [starter]
-                    states = lstm_cell.zero_state(1, tf.float32)
-                    for i in iter_:
-                        next, states = lstm_cell.call(out, states)
-                        out.append(self.sess.run(next))
-                        #Todo: Run thru FF net?
-                    return out
+    def generate(self, num_samples, timestamps_per_sample, progress_bar=True):
+        assert self.managed
+        assert self.trained
+
+        # Get the number of features from the x placeholder
+        num_features = tf.get_default_graph().get_tensor_by_name('x:0').get_shape().as_list()[2]
+
+        # Make some random noise to go in the x placeholder
+        noise = np.random.normal(.5, .2, (num_samples, timestamps_per_sample, num_features))
+
+        feed_dict = {
+            'placeholders/x:0': noise,
+            'placeholders/seq_lens:0': np.array(num_samples).fill(timestamps_per_sample)
+        }
+
+        output = self.sess.run('generator/output', feed_dict=feed_dict)
+
+        return np.round(output).astype(int)
 
 
