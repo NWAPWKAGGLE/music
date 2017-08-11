@@ -28,22 +28,20 @@ def process_data(songs_, n_steps_):
 model_name = 'adv_a01'
 
 song_directory = './beeth'
-learning_rate_G = .06
-#learning_rate_D = .01
+max_songs = 3
+
 batch_size = 0
-epochs = 5
+epochs = 1
 num_features = 156
 layer_units = 156
-n_steps = 50 # time steps
-max_songs = None
-report_interval = 4
+num_layers = 2
+time_steps = 10
+
+report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
+expected_output, seqlens = process_data(songs, time_steps)
 
-
-
-
-
-with AdversarialNet.load_or_new(model_name, learning_rate, num_features, layer_units, num_layers) as net:
+with AdversarialNet.new(model_name, num_features, layer_units, num_layers) as net:
     tqdm.write('############# MODEL IS {0}TRAINED #############'.format('' if net.trained else 'UN'))
-    net.learn(input_sequence, seqlens, epochs=3, report_interval=1)
+    net.learn_multiple_epochs(expected_output, seqlens, g_learning_rate=0.01, d_learning_rate=0.007, epochs=1, report_interval=1)
