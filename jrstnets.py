@@ -15,7 +15,7 @@ if not verbose:
 
 class DFFNetFactory:
     """
-    Wrapper for LFFNet to prevent direct instantiation.
+    Wrapper for DFFNet to prevent direct instantiation.
     """
 
     @classmethod
