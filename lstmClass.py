@@ -14,7 +14,6 @@ def split_list(l, n):
             list.append(np.array(l[j:j+n]))
     return list
 
-
 import midi_manipulation as mm
 
 class LSTM:
@@ -89,7 +88,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=.05, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.AdamOptimizer(learning_rate=.005, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -218,13 +217,15 @@ class LSTM:
 
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
+        unbatched_training_expected = training_expected
+        unbatched_seqlens = seqlens
         for i in iter_:
 
             rand = np.random.RandomState(int(time.time()))
-            idx = np.arange(len(training_expected))
+            idx = np.arange(len(unbatched_training_expected))
             np.random.shuffle(idx)
-            training_expected = [training_expected[i] for i in idx]
-            seqlens = [seqlens[i] for i in idx]
+            training_expected = [unbatched_training_expected[i] for i in idx]
+            seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
             for k in tqdm(range(len(training_expected))):
