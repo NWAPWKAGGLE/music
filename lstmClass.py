@@ -77,6 +77,7 @@ class LSTM:
             # bias vector for visible layer
             self.bv = tf.Variable(tf.zeros([1, self.n_visible_RBM], tf.float32, name="bv"))
 
+
             #### Generative Algorithm
             # sample of x
             self.x_sample = self.gibbs_sample(1)
@@ -132,6 +133,9 @@ class LSTM:
         self.D_real, _ = self.discriminator(self.x) # returns same d_vars; unnecessary to use this return value here
         self.D_fake, d_vars = self.discriminator(self.G_sample)
 
+        self.real_count = tf.reduce_mean(self.D_real)
+        self.fake_count = tf.reduce_mean(self.D_fake)
+
         self.D_vars.extend(d_vars)
 
         self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
@@ -140,7 +144,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.001, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.005, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -349,7 +353,9 @@ class LSTM:
 
 
             if i % report_interval == 0:
+                tqdm.write('Real Count {}'.format(self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[-1], self.seq_len: seqlens[-1]})))
 
+                tqdm.write('Fake Count {}'.format(self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[-1], self.seq_len: seqlens[-1]})))
                 self._save((G_err, D_err), i, epochs)
                 self._progress_sequence((G_err, D_err), i, epochs)
                 tqdm.write('Sequence generated')
