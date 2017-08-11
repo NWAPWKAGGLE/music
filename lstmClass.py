@@ -144,7 +144,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.005, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.05, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
@@ -339,18 +339,17 @@ class LSTM:
                 G_stop_count = 0
                 D_stop_count = 0
 
-                if fake_count > .6:
+                if fake_count > .53:
                     print('stopping G')
                     train_G = False
                     G_stop_count += 1
                 else:
                     train_G = True
                     G_stop_count = 0
-                if fake_count < .43:
+                if fake_count < .45:
                     train_D = False
                     print('stopping D')
                     D_stop_count += 1
-
                 else:
                     train_D = True
                     D_stop_count = 0
