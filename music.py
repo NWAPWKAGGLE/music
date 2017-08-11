@@ -25,18 +25,18 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'C_RNN_GAN_D1'
+model_name = 'C_RNN_GAN_E1'
 
 song_directory = './classical'
 learning_rate_G = .06
 #learning_rate_D = .01
-batch_size = 100
+batch_size = 1000
 load_from_saved = False
-epochs = 5
+epochs = 100
 num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
-rbm_epochs = 150
+rbm_epochs = 100
 max_songs = 30
 report_interval = 4
 
@@ -48,10 +48,12 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 expected_output, seqlens = process_data(songs, n_steps)
 
-for i in range(len(songs)):
-    lstm.train(rbm_epochs, songs[i])
+
 
 for j in range(30):
+
+    for i in range(len(songs)):
+        lstm.train(rbm_epochs, songs[i])
 
     expected_output, seqlens = process_data(songs, n_steps)
 
