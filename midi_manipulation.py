@@ -123,13 +123,12 @@ def get_songs(path, model_name, max=None):
     print(files)
     songs = []
     c = 0
-    for f in tqdm(files, desc='{0}.get_songs({1})'.format(model_name, path)):
 
+    for f in tqdm(files):
         try:
-
             song = np.array(midiToNoteStateMatrix(f))
-            songs.append(song)
-
+            if np.array(song).shape[0] > 50:
+                songs.append(song)
         except Exception as e:
             raise e
     return songs

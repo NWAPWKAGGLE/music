@@ -14,10 +14,14 @@ def split_list(l, n):
             list.append(np.array(l[j:j+n]))
     return list
 
+def sample(probs):
+    #Takes in a vector of probabilities, and returns a random vector of 0s and 1s sampled from the input vector
+    return tf.floor(probs + tf.random_uniform(tf.shape(probs), 0, 1))
+
 import midi_manipulation as mm
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, num_layers=2):
+    def __init__(self, model_name, num_features, layer_units, batch_size, n_hidden_RBM, gibbs_sample_steps = 1, learning_rate_RBM = .005, learning_rate=.05, num_layers=2):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -35,6 +39,19 @@ class LSTM:
         self.num_features = num_features
         self.layer_units = layer_units
 
+        self.n_visible_RBM = num_features
+
+        # size of the hidden layer
+        self.n_hidden_RBM = n_hidden_RBM
+
+        # number of training examples to send through at a time
+
+        # number of steps to take when doing a gibbs sample
+        self.gibbs_sample_steps = gibbs_sample_steps
+
+        # the learning rate
+        self.lr_RBM = tf.constant(learning_rate_RBM, tf.float32)
+
         self.sess = None
         self.saver = None
         self.writer = None
@@ -46,10 +63,45 @@ class LSTM:
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
+
+
             self.G_vars = []
 
-            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
+            # size of visible layer
+
+            self.x_RBM = tf.placeholder(tf.float32, [None, self.n_visible_RBM], name="x_RBM")
+            self.W = tf.Variable(tf.random_normal([self.n_visible_RBM, self.n_hidden_RBM], 0.01), name="W")
+
+            # bias vector for hidden layer
+            self.bh = tf.Variable(tf.zeros([1, self.n_hidden_RBM], tf.float32, name="bh"))
+            # bias vector for visible layer
+            self.bv = tf.Variable(tf.zeros([1, self.n_visible_RBM], tf.float32, name="bv"))
+
+            #### Generative Algorithm
+            # sample of x
+            self.x_sample = self.gibbs_sample(1)
+            # sample of hidden nodes, from original inputs
+            self.h = sample(tf.sigmoid(tf.matmul(self.x_RBM, self.W) + self.bh))
+            # sample of hidden nodes, from sampled reconstructed inputs
+            self.h_sample = sample(tf.sigmoid(tf.matmul(self.x_sample, self.W) + self.bh))
+
+            # update weights and biases based on the differences between created samples and original values
+
+            self.size_bt = tf.cast(tf.shape(self.x_RBM)[0], tf.float32)
+            print(self.size_bt)
+            self.W_adder = tf.multiply(self.lr_RBM / self.size_bt, tf.subtract(tf.matmul(tf.transpose(self.x_RBM), self.h),
+                                                                           tf.matmul(tf.transpose(self.x_sample),
+                                                                                     self.h_sample)))
+            self.bv_adder = tf.multiply(self.lr_RBM / self.size_bt,
+                                        tf.reduce_sum(tf.subtract(self.x_RBM, self.x_sample), 0, True))
+            self.bh_adder = tf.multiply(self.lr_RBM / self.size_bt,
+                                        tf.reduce_sum(tf.subtract(self.h, self.h_sample), 0, True))
+            # when we do sess.run(upt), TF will do all 3 update steps
+            self.updt = [self.W.assign_add(self.W_adder), self.bv.assign_add(self.bv_adder),
+                         self.bh.assign_add(self.bh_adder)]
+
+            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.n_hidden_RBM], stddev=.1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.truncated_normal([self.n_hidden_RBM], stddev=.1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
@@ -94,6 +146,37 @@ class LSTM:
         self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
+
+    def gibbs_sample(self, k):
+        # Runs a k-step gibbs chain to sample from the probability distribution of the RBM defined by W, bh, bv
+        def gibbs_step(count, k, xk):
+            # Runs a single gibbs step. The visible values are initialized to xk
+            hk = sample(
+                tf.sigmoid(tf.matmul(xk, self.W) + self.bh))  # Propagate the visible values to sample the hidden values
+            xk = sample(tf.sigmoid(
+                tf.matmul(hk,
+                          tf.transpose(self.W)) + self.bv))  # Propagate the hidden values to sample the visible values
+            return count + 1, k, xk
+
+        # Run gibbs steps for k iterations
+        ct = tf.constant(0)  # counter
+        [_, _, x_sample] = tf.while_loop(lambda count, num_iter, *args: count < num_iter,
+                                         gibbs_step, [ct, tf.constant(k), self.x_RBM], None, 1, False)
+        # This is not strictly necessary in this implementation, but if you want to adapt this code to use one of TensorFlow's
+        # optimizers, you need this in order to stop tensorflow from propagating gradients back through the gibbs step
+        x_sample = tf.stop_gradient(x_sample)
+        return x_sample
+
+    def train(self, num_epochs, training_set):
+
+        # run through training data num_epoch times
+        for epoch in tqdm(range(num_epochs)):
+            self.train_step(training_set)
+
+    def train_step(self, training_set):
+        for i in range(1, len(training_set), self.batch_size):
+            tr_x = training_set[i:i + self.batch_size]
+            self.sess.run(self.updt, feed_dict={self.x_RBM: tr_x})
 
     def lstm_cell_construct(self, layer_units, num_layers):
         cell_list = []
@@ -165,9 +248,10 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1) + self.G_b1,
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(tf.tanh(tf.matmul(output, self.G_W1) + self.G_b1), tf.transpose(self.W)) + self.bv),
                                       generator_outputs,
                                       name='G_')
+
         return generator_outputs, g_vars
 
     def generate_sequence(self, num_songs, num_steps):
@@ -221,6 +305,7 @@ class LSTM:
         unbatched_seqlens = seqlens
         for i in iter_:
 
+
             rand = np.random.RandomState(int(time.time()))
             idx = np.arange(len(unbatched_training_expected))
             np.random.shuffle(idx)
@@ -228,7 +313,9 @@ class LSTM:
             seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
+
             for k in tqdm(range(len(training_expected))):
+
                 training_input = []
                 for j in range(len(training_expected[k])):
                     training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 156)))
@@ -262,13 +349,16 @@ class LSTM:
 
 
             if i % report_interval == 0:
+
                 self._save((G_err, D_err), i, epochs)
                 self._progress_sequence((G_err, D_err), i, epochs)
                 tqdm.write('Sequence generated')
                 tqdm.write('G Error {}'.format(
-                    G_err))
+                     G_err))
                 tqdm.write('D Error {}'.format(
                     D_err))
+
+
 
     def _save(self, err, i, epochs, save_dir='./model_saves'):
         try:
