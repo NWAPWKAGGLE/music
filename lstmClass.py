@@ -144,10 +144,10 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.05, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.AdamOptimizer(name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.AdamOptimizer(name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
 
@@ -232,7 +232,7 @@ class LSTM:
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
-            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
+            discriminator_outputs = tf.scalar_mul(.5, tf.add(discriminator_outputs_fw, discriminator_outputs_bw))
             d_vars = scope.trainable_variables()
         discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
@@ -339,8 +339,8 @@ class LSTM:
                 G_stop_count = 0
                 D_stop_count = 0
 
-                '''
-                                if fake_count < .45:
+
+                if fake_count < .45:
                     print('stopping G')
                     train_G = False
                     G_stop_count += 1
@@ -351,14 +351,12 @@ class LSTM:
                     train_D = False
                     print('stopping D')
                     D_stop_count += 1
-                else:
+                elif fake_count < .5:
                     train_D = True
                     D_stop_count = 0
 
-                if real_count > .9:
+                if real_count < .1:
                     break
-                '''
-
 
                 if train_G:
                     self.sess.run('G_optimizer',
