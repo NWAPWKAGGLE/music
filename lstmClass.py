@@ -340,18 +340,18 @@ class LSTM:
                 D_stop_count = 0
 
 
-                if fake_count < .45:
+                if fake_count > .6:
                     print('stopping G')
                     train_G = False
                     G_stop_count += 1
-                else:
+                elif fake_count < .52:
                     train_G = True
                     G_stop_count = 0
-                if fake_count > .55:
+                if fake_count < .4 and real_count > .65:
                     train_D = False
                     print('stopping D')
                     D_stop_count += 1
-                elif fake_count < .5:
+                elif fake_count > .47 or real_count < .6:
                     train_D = True
                     D_stop_count = 0
 

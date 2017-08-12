@@ -37,8 +37,8 @@ num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
 rbm_epochs = 10
-max_songs = None
-report_interval = 100
+max_songs = 10
+report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
