@@ -28,7 +28,7 @@ def process_data(songs, n_steps):
 model_name = 'C_RNN_GAN_F1'
 
 song_directory = './classical'
-learning_rate_G = .06
+learning_rate_G = .1
 #learning_rate_D = .01
 batch_size = 1000
 load_from_saved = False
@@ -37,8 +37,8 @@ num_features = 156
 layer_units = 156
 n_steps = 10 # time steps
 rbm_epochs = 10
-max_songs = 30
-report_interval = 10
+max_songs = 10
+report_interval = 1
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
@@ -49,9 +49,6 @@ lstm.start_sess(load_from_saved=load_from_saved)
 expected_output, seqlens = process_data(songs, n_steps)
 
 for j in range(100):
-
-    for i in range(len(songs)):
-        lstm.train(rbm_epochs, songs[i])
 
     expected_output, seqlens = process_data(songs, n_steps)
 

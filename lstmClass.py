@@ -101,8 +101,8 @@ class LSTM:
             self.updt = [self.W.assign_add(self.W_adder), self.bv.assign_add(self.bv_adder),
                          self.bh.assign_add(self.bh_adder)]
 
-            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.n_hidden_RBM], stddev=.1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.truncated_normal([self.n_hidden_RBM], stddev=.1), name='G_b1')
+            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
@@ -147,7 +147,7 @@ class LSTM:
         self.D_optimizer = tf.train.GradientDescentOptimizer(learning_rate=.05, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
 
@@ -252,7 +252,7 @@ class LSTM:
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(tf.tanh(tf.matmul(output, self.G_W1) + self.G_b1), tf.transpose(self.W)) + self.bv),
+        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.G_W1) + self.G_b1),
                                       generator_outputs,
                                       name='G_')
 
@@ -339,14 +339,15 @@ class LSTM:
                 G_stop_count = 0
                 D_stop_count = 0
 
-                if fake_count > .53:
+                '''
+                                if fake_count < .45:
                     print('stopping G')
                     train_G = False
                     G_stop_count += 1
                 else:
                     train_G = True
                     G_stop_count = 0
-                if fake_count < .45:
+                if fake_count > .55:
                     train_D = False
                     print('stopping D')
                     D_stop_count += 1
@@ -356,6 +357,8 @@ class LSTM:
 
                 if real_count > .9:
                     break
+                '''
+
 
                 if train_G:
                     self.sess.run('G_optimizer',
