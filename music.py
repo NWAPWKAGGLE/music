@@ -38,13 +38,15 @@ layer_units = 156
 n_steps = 10 # time steps
 rbm_epochs = 10
 max_songs = 10
-report_interval = 1
+report_interval = 5
 
 songs = midi_manipulation.get_songs(song_directory, model_name, max_songs)
 
 lstm = LSTM(model_name, num_features, layer_units, batch_size, n_hidden_RBM=300, learning_rate=learning_rate_G, )
 
 lstm.start_sess(load_from_saved=load_from_saved)
+
+expected_output, seqlens = process_data(songs, n_steps)
 
 for j in range(50):
 

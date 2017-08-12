@@ -144,7 +144,7 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.GradientDescentOptimizer(.05, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(name='G_optimizer').minimize(
@@ -300,7 +300,7 @@ class LSTM:
         """
 
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
-        train_G = True
+        train_G = False
         train_D = True
 
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
@@ -333,8 +333,8 @@ class LSTM:
                                                           self.seq_len: seqlens[k]})
                 D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
                                                        self.seq_len: seqlens[k]})
-                fake_count = self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
-                real_count = self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+                real_count = self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+                fake_count = self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
 
                 G_stop_count = 0
                 D_stop_count = 0
@@ -345,7 +345,7 @@ class LSTM:
                     train_G = False
                     G_stop_count += 1
                 elif fake_count < .52:
-                    train_G = True
+                    train_G = False
                     G_stop_count = 0
                 if fake_count < .4 and real_count > .65:
                     train_D = False
