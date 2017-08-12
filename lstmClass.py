@@ -305,65 +305,54 @@ class LSTM:
 
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
-        unbatched_training_expected = training_expected
-        unbatched_seqlens = seqlens
+
         for i in iter_:
 
 
-            rand = np.random.RandomState(int(time.time()))
-            idx = np.arange(len(unbatched_training_expected))
-            np.random.shuffle(idx)
-            training_expected = [unbatched_training_expected[i] for i in idx]
-            seqlens = [unbatched_seqlens[i] for i in idx]
-            training_expected = split_list(training_expected, batch_size)
-            seqlens = split_list(seqlens, batch_size)
+            training_input = []
+            for j in range(len(training_expected)):
+                training_input.append(np.random.normal(.5, .2, (len(training_expected[j]), 156)))
+                if (len(training_expected[j]) < max_seqlen):
+                    training_input[j] = np.pad(training_input[j],
+                                            pad_width=(((0, max_seqlen - len(training_expected[j])), (0, 0))),
+                                            mode='constant',
+                                            constant_values=0)
 
-            for k in tqdm(range(len(training_expected))):
+            G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected,
+                                                          self.seq_len: seqlens})
+            D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected,
+                                                       self.seq_len: seqlens})
+            real_count = self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+            fake_count = self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
 
-                training_input = []
-                for j in range(len(training_expected[k])):
-                    training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 156)))
-                    if (len(training_expected[k][j]) < max_seqlen):
-                        training_input[j] = np.pad(training_input[j],
-                                               pad_width=(((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
-                                               mode='constant',
-                                               constant_values=0)
+            G_stop_count = 0
+            D_stop_count = 0
 
-                G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                          self.seq_len: seqlens[k]})
-                D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                       self.seq_len: seqlens[k]})
-                real_count = self.sess.run(self.real_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
-                fake_count = self.sess.run(self.fake_count, feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
 
+            if fake_count > .6:
+                print('stopping G')
+                train_G = False
+                G_stop_count += 1
+            elif fake_count < .52:
+                train_G = False
                 G_stop_count = 0
+            if fake_count < .4 and real_count > .65:
+                train_D = True
+                print('stopping D')
+                D_stop_count += 1
+            elif fake_count > .47 or real_count < .6:
+                train_D = True
                 D_stop_count = 0
 
+            if real_count < .1:
+                break
 
-                if fake_count > .6:
-                    print('stopping G')
-                    train_G = False
-                    G_stop_count += 1
-                elif fake_count < .52:
-                    train_G = False
-                    G_stop_count = 0
-                if fake_count < .4 and real_count > .65:
-                    train_D = False
-                    print('stopping D')
-                    D_stop_count += 1
-                elif fake_count > .47 or real_count < .6:
-                    train_D = True
-                    D_stop_count = 0
-
-                if real_count < .1:
-                    break
-
-                if train_G:
-                    self.sess.run('G_optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
-                if train_D:
-                    self.sess.run('D_optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected[k], self.seq_len: seqlens[k]})
+            if train_G:
+                self.sess.run('G_optimizer',
+                        feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+            if train_D:
+                self.sess.run('D_optimizer',
+                        feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
 
 
             if i % report_interval == 0:
