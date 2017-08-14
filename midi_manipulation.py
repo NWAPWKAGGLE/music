@@ -120,10 +120,9 @@ def get_songs(path, model_name, max=None):
     '''
     files = glob.glob('{}/*.mid*'.format(path))
     files = files[:max] if max is not None else files
-    print(files)
+
     songs = []
     c = 0
-
     for f in tqdm(files):
         try:
             song = np.array(midiToNoteStateMatrix(f))
