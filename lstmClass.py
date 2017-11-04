@@ -4,7 +4,7 @@ from tqdm import tqdm
 import time
 import os
 from datetime import datetime
-
+import midiprocess
 np.set_printoptions(threshold=np.nan)
 
 def split_list(l, n):
@@ -13,8 +13,6 @@ def split_list(l, n):
         if (j+n < len(l)):
             list.append(np.array(l[j:j+n]))
     return list
-
-import midi_manipulation as mm
 
 class LSTM:
     def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, num_layers=2):
@@ -40,14 +38,16 @@ class LSTM:
         self.writer = None
         # build model - this part should probably be abstracted somehow,
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
-        self.x = tf.placeholder(tf.float32, (None, None, self.num_features), name='x')
+        self.x = tf.placeholder(tf.float32, (None, None, 1), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
-            self.G_vars = []
 
+            self.G_vars = []
+            self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=.1), name='G_W0')
+            self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='G_b0')
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
 
@@ -59,6 +59,8 @@ class LSTM:
         with tf.variable_scope('discriminator') as scope:
             self.D_vars = []
 
+            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='D_b0')
             self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
             self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
 
@@ -77,7 +79,7 @@ class LSTM:
 
         self.G_vars.extend(g_vars)
 
-        self.D_real, _ = self.discriminator(self.x) # returns same d_vars; unnecessary to use this return value here
+        self.D_real, _ = self.discriminator(self.y) # returns same d_vars; unnecessary to use this return value here
         self.D_fake, d_vars = self.discriminator(self.G_sample)
 
         self.D_vars.extend(d_vars)
@@ -91,10 +93,14 @@ class LSTM:
         print(self.G_vars)
         print(self.D_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(.0005, name='D_optimizer').minimize(
+        self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')
+        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
+            self.cost, var_list=self.G_vars)
+
+        self.D_optimizer = tf.train.AdamOptimizer(.0001, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(name='G_optimizer').minimize(
+        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer').minimize(
             self.G_loss,
             var_list=self.G_vars)
 
@@ -103,7 +109,7 @@ class LSTM:
         var_list = []
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
-                cell = tf.contrib.rnn.LSTMCell(layer_units)
+                cell = tf.contrib.rnn.GRUCell(layer_units, activation=tf.nn.relu6)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
@@ -141,12 +147,13 @@ class LSTM:
         :return: (tf.Tensor, (Batch_Size, Time_Steps, 1)) the outputs of the discriminator lstm
         (single values denoting real or fake samples)
         """
-
+        discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
+                                         inputs, name='D_before')
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
             #                                                  sequence_length=self.seq_len)
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
-                self.discriminator_lstm_cell_bw, inputs, dtype=tf.float32)
+                self.discriminator_lstm_cell_bw, discriminator_inputs, dtype=tf.float32)
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
             discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
             d_vars = scope.trainable_variables()
@@ -162,15 +169,18 @@ class LSTM:
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
+        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
             # reuse states if necessary
 
-            generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, inputs, dtype=tf.float32,
+            generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, generator_inputs, dtype=tf.float32,
                                                           sequence_length=self.seq_len)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.G_W1) + self.G_b1),
+        generator_outputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.G_W1)),
                                       generator_outputs,
                                       name='G_')
+
         return generator_outputs, g_vars
 
     def generate_sequence(self, num_songs, num_steps):
@@ -183,24 +193,48 @@ class LSTM:
         # this needs to be fixed to use all the starter values
         rand = np.random.RandomState(int(time.time()))
 
-        inputs = rand.normal(.5, .2, (num_songs, num_steps, 156))
+        inputs = rand.normal(.5, .2, (num_songs, num_steps, 1))
 
         output = self.sess.run(self.G_sample, feed_dict={self.x: inputs, self.seq_len: [num_steps for i in range(num_songs)]})
 
         # set states to None in case generate Sequence is used
-
         return np.round(output).astype(int)
 
-    def generate_midi_from_sequences(self, sequence, dir_path):
-        """
+    def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
+        tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
 
-        :param sequence: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs,
-        like is outputed from self.generateSequence()
-        :param dir_path: (string, path) the directory to save the songs to
-        :return: None
-        """
-        for i in range(len(sequence)):
-            mm.noteStateMatrixToMidi(sequence[i], dir_path + 'generated_chord_{}'.format(i))
+
+        iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
+        max_seqlen = max(map(len, training_expected))
+        for i in iter_:
+            rand = np.random.RandomState(int(time.time()))
+
+            training_input = []
+            for j in range(len(training_expected)):
+                training_input.append(rand.normal(.5, .2, (len(training_expected[j]), 1)))
+                if (len(training_expected[j]) < max_seqlen):
+                    training_input[j] = np.pad(training_input[j],
+                                               pad_width=(((0, max_seqlen - len(training_expected[j])), (0, 0))),
+                                               mode='constant',
+                                               constant_values=0)
+
+            idx = np.arange(len(training_input))
+            np.random.shuffle(idx)
+            idx = idx.tolist()
+
+            training_input = [training_input[i] for i in idx]
+            training_expected = [training_expected[i] for i in idx]
+            seqlens = [seqlens[i] for i in idx]
+            self.sess.run('optimizer',
+                          feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+
+            if i % report_interval == 0:
+                err = self.sess.run(self.cost,
+                                    feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+                #self._save(err, i, epochs)
+                self._progress_sequence(err, i, epochs)
+                tqdm.write('Sequence generated')
+                tqdm.write('Error {}'.format(err))
 
     def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100):
         """
@@ -222,6 +256,7 @@ class LSTM:
         max_seqlen = max(map(len, training_expected))
         unbatched_training_expected = training_expected
         unbatched_seqlens = seqlens
+
         for i in iter_:
 
             rand = np.random.RandomState(int(time.time()))
@@ -234,7 +269,7 @@ class LSTM:
             for k in range(len(training_expected)):
                 training_input = []
                 for j in range(len(training_expected[k])):
-                    training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 156)))
+                    training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 1)))
                     if (len(training_expected[k][j]) < max_seqlen):
                         training_input[j] = np.pad(training_input[j],
                                                    pad_width=(((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
@@ -252,18 +287,21 @@ class LSTM:
                 fake_count = self.sess.run(self.fake_count,
                                            feed_dict={self.x: training_input, self.y: training_expected[k],
                                                    self.seq_len: seqlens[k]})
-                train_D = False
+                if fake_count < .3:
+                    train_D = False
+                elif fake_count > .5:
+                    train_D = True
 
                 if train_G:
                     self.sess.run('G_optimizer',
                                   feed_dict={self.x: training_input, self.y: training_expected[k],self.seq_len: seqlens[k]})
-                #if train_D:
-                    #self.sess.run('D_optimizer',
-                                  #feed_dict={self.x: training_input, self.y: training_expected[k],
-                                             #self.seq_len: seqlens[k]})
+                if train_D:
+                    self.sess.run('D_optimizer',
+                                  feed_dict={self.x: training_input, self.y: training_expected[k],
+                                             self.seq_len: seqlens[k]})
 
             if i % report_interval == 0:
-                self._save((G_err, D_err), i, epochs)
+                #self._save((G_err, D_err), i, epochs)
                 self._progress_sequence((G_err, D_err), i, epochs)
                 tqdm.write('Real Count {}'.format(real_count))
 
@@ -297,6 +335,10 @@ class LSTM:
                         epochs, str(datetime.now()).replace(':', '_')))
         os.makedirs(s_path, exist_ok=True)
         sequences = self.generate_sequence(1, 50)
+
+        print(self.sess.run(self.G_W1))
+
         for i in range(len(sequences)):
-            mm.noteStateMatrixToMidi(sequences[i], os.path.join(s_path, '{0}.mid'.format(i)))
+            print(sequences[i])
+            midiprocess.save_to_midi_file(sequences[i], os.path.join(s_path, '{0}.mid'.format(i)))
 
