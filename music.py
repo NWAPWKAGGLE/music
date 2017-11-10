@@ -28,9 +28,9 @@ def process_data(songs, n_steps):
 
 model_name = 'C_RNN_GAN_V2_A1'
 song_directory = './classical'
-learning_rate_G = .01
+learning_rate_G = .1
 #learning_rate_D = .01
-batch_size = 50
+batch_size = 10
 load_from_saved = False
 epochs = 20
 num_features = 4

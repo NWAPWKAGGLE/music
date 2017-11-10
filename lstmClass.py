@@ -97,12 +97,20 @@ class LSTM:
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(discriminator_lr, name='D_optimizer').minimize(
-            self.D_loss,
-            var_list=self.D_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer').minimize(
-            self.G_loss,
-            var_list=self.G_vars)
+        self.D_optimizer = tf.train.AdamOptimizer(discriminator_lr)
+
+        D_grads = tf.gradients(self.D_loss, self.D_vars)
+        D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
+        D_grads_and_vars = list(zip(D_grads, self.D_vars))
+        self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
+
+        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
+
+        G_grads = tf.gradients(self.G_loss, self.G_vars)
+        G_grads, _ = tf.clip_by_global_norm(G_grads, 50)  # gradient clipping
+        G_grads_and_vars = list(zip(G_grads, self.G_vars))
+        self.g_optimize = self.G_optimizer.apply_gradients(G_grads_and_vars)
+
 
     def lstm_cell_construct(self, layer_units, num_layers):
         cell_list = []
@@ -276,33 +284,31 @@ class LSTM:
                                                    mode='constant',
                                                    constant_values=0)
 
-                G_err = self.sess.run(self.G_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                              self.seq_len: seqlens[k]})
-                D_err = self.sess.run(self.D_loss, feed_dict={self.x: training_input, self.y: training_expected[k],
+                G_err, D_err, real_count, fake_count = self.sess.run([self.G_loss, self.D_loss, self.real_count, self.fake_count], feed_dict={self.x: training_input, self.y: training_expected[k],
                                                               self.seq_len: seqlens[k]})
 
-                real_count = self.sess.run(self.real_count,
-                                           feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                      self.seq_len: seqlens[k]})
-                fake_count = self.sess.run(self.fake_count,
-                                           feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                   self.seq_len: seqlens[k]})
                 if fake_count < .3:
                     train_D = False
                 elif fake_count > .5:
                     train_D = True
 
+                if (G_err > 3) & (D_err < .7*G_err):
+                    train_D = False
+                elif (G_err < 2):
+                    train_D = True
+
                 if train_G:
-                    self.sess.run('G_optimizer',
+                    self.sess.run(self.d_optimize,
                                   feed_dict={self.x: training_input, self.y: training_expected[k],self.seq_len: seqlens[k]})
                 if train_D:
-                    self.sess.run('D_optimizer',
+                    self.sess.run(self.g_optimize,
                                   feed_dict={self.x: training_input, self.y: training_expected[k],
                                              self.seq_len: seqlens[k]})
 
+
             if i % report_interval == 0:
                 #self._save((G_err, D_err), i, epochs)
-                self._progress_sequence((G_err, D_err), i, epochs)
+                #self._progress_sequence((G_err, D_err), i, epochs)
                 tqdm.write('Real Count {}'.format(real_count))
 
                 tqdm.write('Fake Count {}'.format(fake_count))
