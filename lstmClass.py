@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, num_layers=2):
+    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -97,7 +97,7 @@ class LSTM:
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(.0001, name='D_optimizer').minimize(
+        self.D_optimizer = tf.train.AdamOptimizer(discriminator_lr, name='D_optimizer').minimize(
             self.D_loss,
             var_list=self.D_vars)
         self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer').minimize(

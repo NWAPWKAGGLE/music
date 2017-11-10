@@ -15,7 +15,7 @@ def get_song(path):
     song = []
     tempo = 500000
     ticks_per_beat = mid.ticks_per_beat
-    print(ticks_per_beat)
+
     for msg in mid:
         if msg.type=='set_tempo':
 
@@ -45,8 +45,11 @@ def save_to_midi_file(song_array, name):
 
     mid.tracks.append(track)
     for i in range(len(song_array)):
-
-        track.append(mido.Message('note_on', note=song_array[i][0], velocity=song_array[i][1], time=int(round(song_array[i][2], 0))))
+        if (song_array[i][0] > 127):
+            song_array[i][0]=127
+        if (song_array[i][1] > 127):
+            song_array[i][1]=127
+        track.append(mido.Message('note_on', note=int(song_array[i][0]), velocity=int(song_array[i][1]), time=int(round(song_array[i][2], 0))))
 
     mid.save(name)
 
@@ -60,22 +63,19 @@ def convert_timestamps_to_notes(song):
         if (song[i][1] != 0):
 
             note_length = 0
-
+            time_till_next_note = song[i][2]
             for j in range(len(song)-i-1):
 
                 k=i+j+1
                 note_length += song[k][2]
+
                 #check if it is the note off event
                 if (song[i][0] == song[k][0]) and (song[k][1] == 0):
 
                     #if the next note is the note off event, set the time to wait to the length of the note + the time after note off event
                     if j==1:
                         time_till_next_note = song[i+1][2]+song[i][2]
-
-
                     #otherwise, it's just the time after the current note
-                    else:
-                        time_till_next_note = song[i][2]
                     break
 
             new_song.append([song[i][0], song[i][1], note_length, time_till_next_note])

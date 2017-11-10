@@ -28,20 +28,21 @@ def process_data(songs, n_steps):
 
 model_name = 'C_RNN_GAN_V2_A1'
 song_directory = './classical'
-learning_rate_G = .1
+learning_rate_G = .01
 #learning_rate_D = .01
 batch_size = 50
 load_from_saved = False
 epochs = 20
-num_features = 3
-layer_units = 2000
+num_features = 4
+layer_units = 1000
+discriminator_lr = .001
 n_steps = 10 # time steps
-max_songs = 10
+max_songs = None
 report_interval = 10
 
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 
-lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate=learning_rate_G)
+lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate=learning_rate_G, discriminator_lr=discriminator_lr)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
