@@ -34,11 +34,10 @@ batch_size = 50
 load_from_saved = False
 epochs = 20
 num_features = 3
-layer_units = 10
+layer_units = 2000
 n_steps = 10 # time steps
-rbm_epochs = 20
 max_songs = 10
-report_interval = 1
+report_interval = 10
 
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 
@@ -48,7 +47,9 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 expected_output, seqlens = process_data(songs, n_steps)
 
-lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
+for i in range(10):
+    lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
+    n_steps += 10
 
 lstm.end_sess()
 

@@ -198,7 +198,7 @@ class LSTM:
         output = self.sess.run(self.G_sample, feed_dict={self.x: inputs, self.seq_len: [num_steps for i in range(num_songs)]})
 
         # set states to None in case generate Sequence is used
-        return np.round(output).astype(int)
+        return output
 
     def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
