@@ -29,6 +29,7 @@ class LSTM:
         self.model_name = model_name
 
         self.learning_rate = learning_rate
+        self.discriminator_lr = discriminator_lr
         self.batch_size = batch_size
         self.num_features = num_features
         self.layer_units = layer_units
@@ -90,19 +91,22 @@ class LSTM:
         self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
         self.G_loss = -tf.reduce_mean(tf.log(self.D_fake), name='G_loss')
 
-        print(self.G_vars)
-        print(self.D_vars)
+
+
 
         self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(discriminator_lr)
+        self.D_optimizer = tf.train.AdamOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
         D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
-        self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
+
+        pointthrees = tf.fill(tf.shape(self.fake_count), .3)
+        pointfives = tf.fill(tf.shape(self.fake_count), .5)
+        self.d_optimize = tf.cond(tf.less(self.fake_count, pointthrees), true_fn=lambda: False, false_fn=lambda: tf.cond(tf.greater(self.fake_count, pointfives), true_fn=lambda: self.D_optimizer.apply_gradients(D_grads_and_vars), false_fn=lambda:  False))
 
         self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
@@ -274,7 +278,7 @@ class LSTM:
             seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
-            for k in range(len(training_expected)):
+            for k in tqdm(range(len(training_expected))):
                 training_input = []
                 for j in range(len(training_expected[k])):
                     training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 1)))
@@ -284,18 +288,6 @@ class LSTM:
                                                    mode='constant',
                                                    constant_values=0)
 
-                G_err, D_err, real_count, fake_count = self.sess.run([self.G_loss, self.D_loss, self.real_count, self.fake_count], feed_dict={self.x: training_input, self.y: training_expected[k],
-                                                              self.seq_len: seqlens[k]})
-
-                if fake_count < .3:
-                    train_D = False
-                elif fake_count > .5:
-                    train_D = True
-
-                if (G_err > 3) & (D_err < .7*G_err):
-                    train_D = False
-                elif (G_err < 2):
-                    train_D = True
 
                 if train_G:
                     self.sess.run(self.d_optimize,
@@ -307,8 +299,15 @@ class LSTM:
 
 
             if i % report_interval == 0:
-                #self._save((G_err, D_err), i, epochs)
-                #self._progress_sequence((G_err, D_err), i, epochs)
+
+                G_err, D_err, real_count, fake_count = self.sess.run(
+                    [self.G_loss, self.D_loss, self.real_count, self.fake_count],
+                    feed_dict={self.x: training_input, self.y: training_expected[k],
+                               self.seq_len: seqlens[k]})
+
+                self._save((G_err, D_err), i, epochs)
+                self._progress_sequence((G_err, D_err), i, epochs)
+
                 tqdm.write('Real Count {}'.format(real_count))
 
                 tqdm.write('Fake Count {}'.format(fake_count))

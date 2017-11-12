@@ -26,7 +26,7 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'C_RNN_GAN_V2_A1'
+model_name = 'C_RNN_GAN_V2_B1'
 song_directory = './classical'
 learning_rate_G = .1
 #learning_rate_D = .01
