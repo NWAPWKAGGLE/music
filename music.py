@@ -30,7 +30,7 @@ model_name = 'C_RNN_GAN_V2_B1'
 song_directory = './classical'
 learning_rate_G = .1
 #learning_rate_D = .01
-batch_size = 10
+batch_size = 1000
 load_from_saved = False
 epochs = 20
 num_features = 4
@@ -38,7 +38,7 @@ layer_units = 1000
 discriminator_lr = .001
 n_steps = 10 # time steps
 max_songs = None
-report_interval = 10
+report_interval = 1
 
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 
@@ -48,9 +48,8 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 expected_output, seqlens = process_data(songs, n_steps)
 
-for i in range(10):
-    lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
-    n_steps += 10
+
+lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
 
 lstm.end_sess()
 

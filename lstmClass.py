@@ -88,11 +88,10 @@ class LSTM:
         self.real_count = tf.reduce_mean(self.D_real)
         self.fake_count = tf.reduce_mean(self.D_fake)
 
-        self.D_loss = -tf.reduce_mean(tf.log(self.D_real) + tf.log(1. - self.D_fake), name='D_loss')
-        self.G_loss = -tf.reduce_mean(tf.log(self.D_fake), name='G_loss')
+        self.D_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_real, 1e-1000000, 1.0))
+                                     - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))
 
-
-
+        self.G_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))
 
         self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
@@ -101,7 +100,7 @@ class LSTM:
         self.D_optimizer = tf.train.AdamOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
-        D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
+        D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         pointthrees = tf.fill(tf.shape(self.fake_count), .3)
@@ -111,12 +110,12 @@ class LSTM:
         self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
-        G_grads, _ = tf.clip_by_global_norm(G_grads, 50)  # gradient clipping
+        G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
         G_grads_and_vars = list(zip(G_grads, self.G_vars))
         self.g_optimize = self.G_optimizer.apply_gradients(G_grads_and_vars)
 
-
     def lstm_cell_construct(self, layer_units, num_layers):
+
         cell_list = []
         var_list = []
         for i in range(num_layers):
@@ -213,6 +212,9 @@ class LSTM:
         return output
 
     def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
+        """
+        Deprecated - will be removed soon
+        """
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
 
 
