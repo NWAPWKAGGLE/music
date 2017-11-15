@@ -93,6 +93,9 @@ class LSTM:
 
         self.G_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))
 
+        self.D_loss = tf.check_numerics(self.D_loss, "NaN D_loss", name=None)
+        self.G_loss = tf.check_numerics(self.G_loss, "NaN G_loss", name=None)
+
         self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
