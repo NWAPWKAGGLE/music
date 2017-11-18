@@ -47,10 +47,10 @@ class LSTM:
         with tf.variable_scope('generator') as scope:
 
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=.1), name='G_W0')
-            self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='G_b0')
-            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
+            self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=1), name='G_W0')
+            self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=1), name='G_b0')
+            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
@@ -60,10 +60,10 @@ class LSTM:
         with tf.variable_scope('discriminator') as scope:
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=1), name='D_b0')
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=1), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -106,10 +106,7 @@ class LSTM:
         D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
-        pointthrees = tf.fill(tf.shape(self.fake_count), .3)
-        pointfives = tf.fill(tf.shape(self.fake_count), .5)
-        self.d_optimize = tf.cond(tf.less(self.fake_count, pointthrees), true_fn=lambda: False, false_fn=lambda: tf.cond(tf.greater(self.fake_count, pointfives), true_fn=lambda: self.D_optimizer.apply_gradients(D_grads_and_vars), false_fn=lambda:  False))
-
+        self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
         self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
@@ -123,7 +120,7 @@ class LSTM:
         var_list = []
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
-                cell = tf.contrib.rnn.GRUCell(layer_units, activation=tf.nn.softmax)
+                cell = tf.contrib.rnn.GRUCell(layer_units)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
@@ -286,32 +283,40 @@ class LSTM:
             for k in tqdm(range(len(training_expected))):
                 training_input = []
                 for j in range(len(training_expected[k])):
-                    training_input.append(rand.normal(.5, .2, (len(training_expected[k][j]), 1)))
+                    training_input.append(rand.normal(0, 1, (len(training_expected[k][j]), 1)))
                     if (len(training_expected[k][j]) < max_seqlen):
                         training_input[j] = np.pad(training_input[j],
                                                    pad_width=(((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
                                                    mode='constant',
                                                    constant_values=0)
 
+                G_err, D_err, real_count, fake_count = self.sess.run(
+                    [self.G_loss, self.D_loss, self.real_count, self.fake_count],
+                    feed_dict={self.x: training_input, self.y: training_expected[k],
+                               self.seq_len: seqlens[k]})
+
+                if (real_count > .7 and fake_count < .3) or (G_err *.6 > D_err and G_err > 4):
+                    train_D = False
+                elif fake_count > .5 or G_err < 3:
+                    train_D = True
 
                 if train_G:
-                    self.sess.run(self.d_optimize,
+                    self.sess.run(self.g_optimize,
                                   feed_dict={self.x: training_input, self.y: training_expected[k],self.seq_len: seqlens[k]})
                 if train_D:
-                    self.sess.run(self.g_optimize,
+                    self.sess.run(self.d_optimize,
                                   feed_dict={self.x: training_input, self.y: training_expected[k],
                                              self.seq_len: seqlens[k]})
 
 
             if i % report_interval == 0:
 
-                G_err, D_err, real_count, fake_count = self.sess.run(
-                    [self.G_loss, self.D_loss, self.real_count, self.fake_count],
-                    feed_dict={self.x: training_input, self.y: training_expected[k],
-                               self.seq_len: seqlens[k]})
 
-                self._save((G_err, D_err), i, epochs)
-                self._progress_sequence((G_err, D_err), i, epochs)
+                self._save((G_err, D_err), i, epochs) # save checkpoint of the model
+                self._progress_sequence((G_err, D_err), i, epochs) #Print a generated sequence for qualitative evaluation
+
+
+                #print stats for diagnostics
 
                 tqdm.write('Real Count {}'.format(real_count))
 
