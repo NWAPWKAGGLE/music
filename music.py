@@ -13,11 +13,9 @@ def split_list(l, n):
 
 def process_data(songs, n_steps):
     expected_output = []
-    seqlens = []
-    max_seqlen = max(map(len, songs))
 
     for song in tqdm(songs, desc="{0}.pad/seq".format(model_name), ascii=True):
-        print(len(song))
+
         if (n_steps):
             song = split_list(song, n_steps)
 
@@ -34,7 +32,7 @@ batch_size = 100
 load_from_saved = False
 epochs = 20
 num_features = 4
-layer_units = 250
+layer_units = 350
 discriminator_lr = .01
 n_steps = 2 # time steps
 max_songs = None
@@ -42,7 +40,7 @@ report_interval = 1
 
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 
-lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate=learning_rate_G, num_layers=5, discriminator_lr=discriminator_lr)
+lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate=learning_rate_G, num_layers=3, discriminator_lr=discriminator_lr)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 

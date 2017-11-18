@@ -45,25 +45,26 @@ class LSTM:
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
-
+            scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
             self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=1), name='G_W0')
             self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=1), name='G_b0')
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=1), name='G_b1')
 
-            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
+            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
             self.G_vars.extend(gen_vars)
             self.G_vars.extend(scope.trainable_variables())
 
         with tf.variable_scope('discriminator') as scope:
+            scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.3), name='D_W0')
-            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.3), name='D_b0')
-            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.3), name='D_W1')
-            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.3), name='D_b1')
+            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='D_b0')
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -88,10 +89,14 @@ class LSTM:
         self.real_count = tf.reduce_mean(self.D_real)
         self.fake_count = tf.reduce_mean(self.D_fake)
 
-        self.D_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_real, 1e-1000000, 1.0))
-                                     - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))
+        reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        reg_constant = 0.1  # Choose an appropriate one.
+        reg_loss = reg_constant * sum(reg_losses)
 
-        self.G_loss = -tf.reduce_mean(tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))
+        self.D_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_real, 1e-1000000, 1.0))
+                                     - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))+reg_loss
+
+        self.G_loss = -tf.reduce_mean(tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))+reg_loss
 
         self.D_loss = tf.check_numerics(self.D_loss, "NaN D_loss", name=None)
         self.G_loss = tf.check_numerics(self.G_loss, "NaN G_loss", name=None)
@@ -100,14 +105,14 @@ class LSTM:
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
-        self.D_optimizer = tf.train.AdamOptimizer(self.discriminator_lr)
+        self.D_optimizer = tf.train.GradientDescentOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
         D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
+        self.G_optimizer = tf.train.GradientDescentOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
         G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
@@ -121,10 +126,10 @@ class LSTM:
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
                 if (use_relu6):
-                    cell=tf.contrib.rnn.GRUCell(layer_units, activation=tf.nn.relu6)
+                    cell=tf.contrib.rnn.LSTMCell(layer_units, forget_bias = 1.0, activation=tf.nn.relu6)
                 else:
                     cell = tf.contrib.rnn.GRUCell(layer_units)
-                cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
+                cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
 
@@ -161,8 +166,9 @@ class LSTM:
         :return: (tf.Tensor, (Batch_Size, Time_Steps, 1)) the outputs of the discriminator lstm
         (single values denoting real or fake samples)
         """
-        discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
-                                         inputs, name='D_before')
+        #discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
+                                        # inputs, name='D_before')
+        discriminator_inputs = inputs
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
             #                                                  sequence_length=self.seq_len)
@@ -183,8 +189,8 @@ class LSTM:
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
-        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
-
+        #generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+        generator_inputs = inputs
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
             # reuse states if necessary
 
@@ -286,7 +292,7 @@ class LSTM:
             for k in tqdm(range(len(training_expected))):
                 training_input = []
                 for j in range(len(training_expected[k])):
-                    training_input.append(rand.normal(0, 1, (len(training_expected[k][j]), 1)))
+                    training_input.append(rand.uniform(0, 1, (len(training_expected[k][j]), 1)))
                     if (len(training_expected[k][j]) < max_seqlen):
                         training_input[j] = np.pad(training_input[j],
                                                    pad_width=(((0, max_seqlen - len(training_expected[k][j])), (0, 0))),
