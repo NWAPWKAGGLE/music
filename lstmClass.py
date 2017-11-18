@@ -100,20 +100,20 @@ class LSTM:
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
             self.cost, var_list=self.G_vars)
 
-        self.D_optimizer = tf.train.RMSPropOptimizer(self.discriminator_lr)
+        self.D_optimizer = tf.train.AdamOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
-        D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
+        D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         pointthrees = tf.fill(tf.shape(self.fake_count), .3)
         pointfives = tf.fill(tf.shape(self.fake_count), .5)
         self.d_optimize = tf.cond(tf.less(self.fake_count, pointthrees), true_fn=lambda: False, false_fn=lambda: tf.cond(tf.greater(self.fake_count, pointfives), true_fn=lambda: self.D_optimizer.apply_gradients(D_grads_and_vars), false_fn=lambda:  False))
 
-        self.G_optimizer = tf.train.RMSPropOptimizer(self.learning_rate, name='G_optimizer')
+        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
-        G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
+        G_grads, _ = tf.clip_by_global_norm(G_grads, 50)  # gradient clipping
         G_grads_and_vars = list(zip(G_grads, self.G_vars))
         self.g_optimize = self.G_optimizer.apply_gradients(G_grads_and_vars)
 
@@ -123,7 +123,7 @@ class LSTM:
         var_list = []
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
-                cell = tf.contrib.rnn.GRUCell(layer_units)
+                cell = tf.contrib.rnn.GRUCell(layer_units, activation=tf.nn.softmax)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
