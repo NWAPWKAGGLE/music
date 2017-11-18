@@ -52,7 +52,7 @@ class LSTM:
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=1), name='G_b1')
 
-            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
+            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
 
             self.G_vars.extend(gen_vars)
             self.G_vars.extend(scope.trainable_variables())
@@ -60,10 +60,10 @@ class LSTM:
         with tf.variable_scope('discriminator') as scope:
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.3), name='D_W0')
+            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.3), name='D_b0')
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.3), name='D_W1')
+            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.3), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -103,24 +103,27 @@ class LSTM:
         self.D_optimizer = tf.train.AdamOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
-        D_grads, _ = tf.clip_by_global_norm(D_grads, 50)  # gradient clipping
+        D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
         self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
-        G_grads, _ = tf.clip_by_global_norm(G_grads, 50)  # gradient clipping
+        G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
         G_grads_and_vars = list(zip(G_grads, self.G_vars))
         self.g_optimize = self.G_optimizer.apply_gradients(G_grads_and_vars)
 
-    def lstm_cell_construct(self, layer_units, num_layers):
+    def lstm_cell_construct(self, layer_units, num_layers, use_relu6=False):
 
         cell_list = []
         var_list = []
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
-                cell = tf.contrib.rnn.GRUCell(layer_units)
+                if (use_relu6):
+                    cell=tf.contrib.rnn.GRUCell(layer_units, activation=tf.nn.relu6)
+                else:
+                    cell = tf.contrib.rnn.GRUCell(layer_units)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5, input_keep_prob=.9))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
@@ -297,6 +300,7 @@ class LSTM:
 
                 if (real_count > .7 and fake_count < .3) or (G_err *.6 > D_err and G_err > 4):
                     train_D = False
+                    print("Stopping D")
                 elif fake_count > .5 or G_err < 3:
                     train_D = True
 
