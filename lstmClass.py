@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2):
+    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2, feature_matching = True):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -81,8 +81,8 @@ class LSTM:
 
         self.G_vars.extend(g_vars)
 
-        self.D_real, _ = self.discriminator(self.y) # returns same d_vars; unnecessary to use this return value here
-        self.D_fake, d_vars = self.discriminator(self.G_sample)
+        self.D_real, self.D_real_feature_matching, _ = self.discriminator(self.y) # returns same d_vars; unnecessary to use this return value here
+        self.D_fake, self.D_fake_feature_matching, d_vars = self.discriminator(self.G_sample)
 
         self.D_vars.extend(d_vars)
 
@@ -97,6 +97,11 @@ class LSTM:
                                      - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))+reg_loss
 
         self.G_loss = -tf.reduce_mean(tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))+reg_loss
+
+        self.G_loss_feature_matching = tf.reduce_mean(tf.squared_difference(self.D_real_feature_matching, self.D_fake_feature_matching))+reg_loss
+
+        if feature_matching:
+            self.G_loss = self.G_loss_feature_matching
 
         self.D_loss = tf.check_numerics(self.D_loss, "NaN D_loss", name=None)
         self.G_loss = tf.check_numerics(self.G_loss, "NaN G_loss", name=None)
@@ -177,9 +182,9 @@ class LSTM:
             discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
             discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
             d_vars = scope.trainable_variables()
-        discriminator_outputs = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
+        classifications = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
                                           discriminator_outputs, name='D_')
-        return discriminator_outputs, d_vars
+        return classifications, discriminator_outputs, d_vars
 
     def generator(self, inputs):
         """
