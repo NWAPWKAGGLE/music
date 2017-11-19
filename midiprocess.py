@@ -1,7 +1,7 @@
 import glob
 from tqdm import tqdm
 import numpy as np
-
+import os
 import mido
 
 def get_song(path):
@@ -12,6 +12,8 @@ def get_song(path):
 
     '''
     mid = mido.MidiFile(path)
+
+
     song = []
     tempo = 500000
     ticks_per_beat = mid.ticks_per_beat
@@ -36,7 +38,13 @@ def get_songs(path, model_name, max=None):
     songs = []
     c = 0
     for f in tqdm(files):
-        songs.append(np.array(convert_timestamps_to_notes(get_song(f))))
+        try:
+            song = get_song(f)
+        except:
+            os.remove(f)
+            continue
+
+        songs.append(np.array(convert_timestamps_to_notes(song)))
     return songs
 
 def save_to_midi_file(song_array, name):

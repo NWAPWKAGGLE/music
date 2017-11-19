@@ -34,7 +34,7 @@ epochs = 20
 num_features = 4
 layer_units = 350
 discriminator_lr = .01
-n_steps = 2 # time steps
+n_steps = 200 # time steps
 max_songs = None
 report_interval = 1
 
