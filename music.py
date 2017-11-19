@@ -28,13 +28,13 @@ model_name = 'C_RNN_GAN_V2_B1'
 song_directory = './classical'
 learning_rate_G = .1
 #learning_rate_D = .01
-batch_size = 1000
+batch_size = 100
 load_from_saved = False
 epochs = 20
 num_features = 4
 layer_units = 350
 discriminator_lr = .01
-n_steps = 200 # time steps
+n_steps = 100 # time steps
 max_songs = None
 report_interval = 1
 

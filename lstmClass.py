@@ -52,7 +52,7 @@ class LSTM:
             self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
             self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=1), name='G_b1')
 
-            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
+            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
 
             self.G_vars.extend(gen_vars)
             self.G_vars.extend(scope.trainable_variables())
@@ -179,11 +179,11 @@ class LSTM:
             #                                                  sequence_length=self.seq_len)
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
                 self.discriminator_lstm_cell_bw, discriminator_inputs, dtype=tf.float32)
-            discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
-            discriminator_outputs = tf.concat([discriminator_outputs_fw, discriminator_outputs_bw], axis=1)
+            #discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
+            #discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
             d_vars = scope.trainable_variables()
         classifications = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
-                                          discriminator_outputs, name='D_')
+                                          discriminator_outputs[-1], name='D_')
         return classifications, discriminator_outputs, d_vars
 
     def generator(self, inputs):
