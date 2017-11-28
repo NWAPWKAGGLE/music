@@ -117,7 +117,7 @@ class LSTM:
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
-        self.G_optimizer = tf.train.GradientDescentOptimizer(self.learning_rate, name='G_optimizer')
+        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
         G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
@@ -182,9 +182,11 @@ class LSTM:
             #discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
             #discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
             d_vars = scope.trainable_variables()
+        outputs_fw, outputs_bw = discriminator_outputs
+        outputs = tf.add(outputs_fw, outputs_bw)
         classifications = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
-                                          discriminator_outputs[-1], name='D_')
-        return classifications, discriminator_outputs, d_vars
+                                          outputs, name='D_')
+        return classifications, outputs, d_vars
 
     def generator(self, inputs):
         """
@@ -305,14 +307,14 @@ class LSTM:
                                                    constant_values=0)
 
                 G_err, D_err, real_count, fake_count = self.sess.run(
-                    [self.G_loss, self.D_loss, self.real_count, self.fake_count],
+                    [self.G_loss, self.D_loss, self.D_real, self.D_fake],
                     feed_dict={self.x: training_input, self.y: training_expected[k],
                                self.seq_len: seqlens[k]})
 
-                if (real_count > .7 and fake_count < .3) or (G_err *.6 > D_err and G_err > 4):
+                if  (G_err *.7 > D_err):
                     train_D = False
                     print("Stopping D")
-                elif fake_count > .5 or G_err < 3:
+                else:
                     train_D = True
 
                 if train_G:
