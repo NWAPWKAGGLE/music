@@ -24,17 +24,17 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'C_RNN_GAN_V2_B1'
+model_name = 'C_RNN_GAN_V2_C1'
 song_directory = './classical'
-learning_rate_G = .1
+learning_rate_G = .001
 #learning_rate_D = .01
 batch_size = 20
-load_from_saved = False
+load_from_saved = True
 epochs = 20
 num_features = 4
 layer_units = 350
-discriminator_lr = .1
-n_steps = 100 # time steps
+discriminator_lr = .001
+n_steps = 2 # time steps
 max_songs = 400
 report_interval = 1
 
