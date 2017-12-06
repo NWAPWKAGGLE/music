@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2, feature_matching = True):
+    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2, feature_matching = True, time_steps=100):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -33,7 +33,7 @@ class LSTM:
         self.batch_size = batch_size
         self.num_features = num_features
         self.layer_units = layer_units
-
+        self.time_steps = time_steps
         self.sess = None
         self.saver = None
         self.writer = None
@@ -41,6 +41,7 @@ class LSTM:
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
         self.x = tf.placeholder(tf.float32, (None, None, 1), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
+
 
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
@@ -78,7 +79,7 @@ class LSTM:
         print(self.G_vars)
         self.states = None
 
-        self.G_sample, g_vars = self.generator(2)
+        self.G_sample, g_vars = self.generator()
 
         self.G_vars.extend(g_vars)
 
@@ -189,14 +190,15 @@ class LSTM:
                                           outputs, name='D_')
         return classifications, outputs, d_vars
 
-    def generator(self, time_steps):
+    def generator(self):
         """
         :param inputs: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) inputs into the generator lstm
         :param reuse_states: (Bool) whether to reuse previous lstm states, for use when generating long sequences recursively. default
         :param time_major: (Bool) whether to set time_major to true for the lstm cell
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
-        inputs = tf.Variable(tf.random_uniform([self.batch_size, time_steps, self.num_features], minval=0, maxval=10))
+
+        inputs = tf.Variable(tf.random_uniform([self.batch_size, self.time_steps, self.num_features], minval=0, maxval=10))
         #generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
         generator_inputs = inputs
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
@@ -262,7 +264,7 @@ class LSTM:
                 tqdm.write('Sequence generated')
                 tqdm.write('Error {}'.format(err))
 
-    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100):
+    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100, time_steps=100):
         """
 
         :param training_input:
@@ -276,8 +278,8 @@ class LSTM:
 
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
         train_G = True
-        train_D = True
 
+        self.time_steps=time_steps
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
         unbatched_training_expected = training_expected

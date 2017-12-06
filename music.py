@@ -26,15 +26,15 @@ def process_data(songs, n_steps):
 
 model_name = 'C_RNN_GAN_V2_C1'
 song_directory = './classical'
-learning_rate_G = .001
+learning_rate_G = .0001
 #learning_rate_D = .01
 batch_size = 20
-load_from_saved = True
-epochs = 20
+load_from_saved = False
+epochs = 300
 num_features = 4
 layer_units = 350
-discriminator_lr = .001
-n_steps = 2 # time steps
+discriminator_lr = .0001
+n_steps = 100 # time steps
 max_songs = 400
 report_interval = 1
 
@@ -46,7 +46,7 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 expected_output, seqlens = process_data(songs, n_steps)
 
-lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
+lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size, time_steps=n_steps)
 
 lstm.end_sess()
 
