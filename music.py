@@ -24,27 +24,31 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'C_RNN_GAN_V2_C1'
+model_name = 'C_RNN_GAN_V3_A1'
 song_directory = './classical'
-learning_rate_G = .0001
+learning_rate_G = .1
+lr = .01
 #learning_rate_D = .01
 batch_size = 20
+pretraining_epochs = 10
 load_from_saved = False
 epochs = 300
 num_features = 4
 layer_units = 350
-discriminator_lr = .0001
+discriminator_lr = .1
 n_steps = 100 # time steps
-max_songs = 400
+max_songs = None
 report_interval = 1
 
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 
-lstm = LSTM(model_name, num_features, layer_units, batch_size, learning_rate=learning_rate_G, discriminator_lr=discriminator_lr)
+lstm = LSTM(model_name, num_features, layer_units, batch_size, g_lr=learning_rate_G, d_lr=discriminator_lr, lr=lr)
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
 expected_output, seqlens = process_data(songs, n_steps)
+
+lstm.trainLSTM(expected_output, epochs=pretraining_epochs, report_interval=1, time_steps=n_steps, seqlens=seqlens, batch_size=batch_size)
 
 lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size, time_steps=n_steps)
 

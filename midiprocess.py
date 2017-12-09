@@ -53,10 +53,11 @@ def save_to_midi_file(song_array, name):
 
     mid.tracks.append(track)
     for i in range(len(song_array)):
-        if (song_array[i][0] > 127):
-            song_array[i][0]=127
-        if (song_array[i][1] > 127):
-            song_array[i][1]=127
+        for j in range(3):
+            if song_array[i][j] > 127:
+                song_array[i][j] = 127
+            elif song_array[i][j] < 0:
+                song_array[i][j] = 0
         track.append(mido.Message('note_on', note=int(song_array[i][0]), velocity=int(song_array[i][1]), time=int(round(song_array[i][2], 0))))
 
     mid.save(name)

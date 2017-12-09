@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, learning_rate=.05, discriminator_lr=.001, num_layers=2, feature_matching = True, time_steps=100):
+    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, time_steps=100):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -27,9 +27,9 @@ class LSTM:
 
         # Set Hyperparams
         self.model_name = model_name
-
-        self.learning_rate = learning_rate
-        self.discriminator_lr = discriminator_lr
+        self.lr = lr
+        self.g_lr = g_lr
+        self.d_lr = d_lr
         self.batch_size = batch_size
         self.num_features = num_features
         self.layer_units = layer_units
@@ -48,10 +48,10 @@ class LSTM:
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=1), name='G_W0')
-            self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=1), name='G_b0')
-            self.G_W1 = tf.Variable(tf.random_uniform([self.layer_units, self.num_features], minval=-100, maxval=100), name='G_W1')
-            self.G_b1 = tf.Variable(tf.random_uniform([self.num_features], minval=0, maxval=50), name='G_b1')
+            self.G_W0 = tf.Variable(tf.random_normal([1, self.layer_units], stddev=1), name='G_W0')
+            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=1), name='G_b0')
+            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
 
@@ -62,10 +62,10 @@ class LSTM:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=1), name='D_b0')
+            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=1), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -105,21 +105,26 @@ class LSTM:
         if feature_matching:
             self.G_loss = self.G_loss_feature_matching
 
+
+
+        self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')+reg_loss
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
+        grads = tf.gradients(self.cost, self.G_vars)
+        grads, _ = tf.clip_by_global_norm(grads, 5)
+        grads_and_vars = list(zip(grads, self.G_vars))
+        self.optimize = optimizer.apply_gradients(grads_and_vars)
+
+        self.D_optimizer = tf.train.GradientDescentOptimizer(self.d_lr)
+
         self.D_loss = tf.check_numerics(self.D_loss, "NaN D_loss", name=None)
         self.G_loss = tf.check_numerics(self.G_loss, "NaN G_loss", name=None)
-
-        self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate, name='optimizer').minimize(
-            self.cost, var_list=self.G_vars)
-
-        self.D_optimizer = tf.train.GradientDescentOptimizer(self.discriminator_lr)
 
         D_grads = tf.gradients(self.D_loss, self.D_vars)
         D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
         self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='G_optimizer')
+        self.G_optimizer = tf.train.AdamOptimizer(self.g_lr, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
         G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
@@ -206,7 +211,7 @@ class LSTM:
 
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, generator_inputs, dtype=tf.float32)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.G_W1)),
+        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1),
                                       generator_outputs,
                                       name='G_')
 
@@ -225,41 +230,37 @@ class LSTM:
         # set states to None in case generate Sequence is used
         return output
 
-    def trainLSTM(self, training_expected, epochs, report_interval=10, seqlens=None):
+    def trainLSTM(self, training_expected, epochs, report_interval=10, time_steps=100, batch_size=100, seqlens=None):
         """
-        Deprecated - will be removed soon
+
+        :param training_expected: songs to match the distribution of
+        :param epochs: number of training epochs to run
+        :param report_interval: frequency to generate progress sequences + save
+        :param time_steps: number of notes to include in each sequence
+        :param batch_size: number of sequences to include in each batch
+        :param seqlens: an array of the length of each sequence (the ends won't be fully time_steps long like the rest)
+        :return: None
         """
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
-
+        self.time_steps=time_steps
 
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
-        max_seqlen = max(map(len, training_expected))
+        unbatched_training_expected = training_expected
+        unbatched_seqlens = seqlens
         for i in iter_:
-            rand = np.random.RandomState(int(time.time()))
-
-            training_input = []
-            for j in range(len(training_expected)):
-                training_input.append(rand.normal(.5, .2, (len(training_expected[j]), 1)))
-                if (len(training_expected[j]) < max_seqlen):
-                    training_input[j] = np.pad(training_input[j],
-                                               pad_width=(((0, max_seqlen - len(training_expected[j])), (0, 0))),
-                                               mode='constant',
-                                               constant_values=0)
-
-            idx = np.arange(len(training_input))
+            idx = np.arange(len(unbatched_training_expected))
             np.random.shuffle(idx)
-            idx = idx.tolist()
-
-            training_input = [training_input[i] for i in idx]
-            training_expected = [training_expected[i] for i in idx]
-            seqlens = [seqlens[i] for i in idx]
-            self.sess.run('optimizer',
-                          feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
+            training_expected = [unbatched_training_expected[i] for i in idx]
+            seqlens = [unbatched_seqlens[i] for i in idx]
+            training_expected = split_list(training_expected, batch_size)
+            seqlens = split_list(seqlens, batch_size)
+            for k in tqdm(range(len(training_expected))):
+                self.sess.run(self.optimize, feed_dict={self.y: training_expected[k], self.seq_len: seqlens[k]})
 
             if i % report_interval == 0:
                 err = self.sess.run(self.cost,
-                                    feed_dict={self.x: training_input, self.y: training_expected, self.seq_len: seqlens})
-                #self._save(err, i, epochs)
+                                    feed_dict={self.y: training_expected[-1], self.seq_len: seqlens[-1]})
+                self._save(err, i, epochs)
                 self._progress_sequence(err, i, epochs)
                 tqdm.write('Sequence generated')
                 tqdm.write('Error {}'.format(err))
