@@ -48,10 +48,10 @@ class LSTM:
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.random_normal([1, self.layer_units], stddev=1), name='G_W0')
-            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=1), name='G_b0')
-            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=1), name='G_b1')
+            self.G_W0 = tf.Variable(tf.random_normal([1, self.layer_units], stddev=.1), name='G_W0')
+            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='G_b0')
+            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=.1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
 
@@ -62,10 +62,10 @@ class LSTM:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='D_b0')
+            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=.1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=.1), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -104,8 +104,6 @@ class LSTM:
 
         if feature_matching:
             self.G_loss = self.G_loss_feature_matching
-
-
 
         self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')+reg_loss
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
@@ -178,9 +176,9 @@ class LSTM:
         :return: (tf.Tensor, (Batch_Size, Time_Steps, 1)) the outputs of the discriminator lstm
         (single values denoting real or fake samples)
         """
-        #discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
-                                        # inputs, name='D_before')
-        discriminator_inputs = inputs
+        discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
+                                        inputs, name='D_before')
+
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
             #                                                  sequence_length=self.seq_len)
@@ -197,21 +195,17 @@ class LSTM:
 
     def generator(self):
         """
-        :param inputs: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) inputs into the generator lstm
-        :param reuse_states: (Bool) whether to reuse previous lstm states, for use when generating long sequences recursively. default
-        :param time_major: (Bool) whether to set time_major to true for the lstm cell
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
-        inputs = tf.Variable(tf.random_uniform([self.batch_size, self.time_steps, self.num_features], minval=0, maxval=10))
-        #generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
-        generator_inputs = inputs
+        inputs = tf.Variable(tf.random_uniform([self.batch_size, self.time_steps, 1], minval=0, maxval=10))
+        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
-            # reuse states if necessary
 
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, generator_inputs, dtype=tf.float32)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1),
+        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1)+self.G_b1,
                                       generator_outputs,
                                       name='G_')
 
