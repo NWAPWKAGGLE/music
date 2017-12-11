@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, time_steps=100):
+    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, max_song_len=50):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -33,7 +33,7 @@ class LSTM:
         self.batch_size = batch_size
         self.num_features = num_features
         self.layer_units = layer_units
-        self.time_steps = time_steps
+        self.max_song_len = max_song_len
         self.sess = None
         self.saver = None
         self.writer = None
@@ -79,12 +79,12 @@ class LSTM:
         print(self.G_vars)
         self.states = None
 
-        self.G_sample, g_vars = self.generator()
+        self.G_sample, seqlens, g_vars = self.block_generator()
 
         self.G_vars.extend(g_vars)
 
         self.D_real, self.D_real_feature_matching, _ = self.discriminator(self.y) # returns same d_vars; unnecessary to use this return value here
-        self.D_fake, self.D_fake_feature_matching, d_vars = self.discriminator(self.G_sample)
+        self.D_fake, self.D_fake_feature_matching, d_vars = self.discriminator(self.G_sample, seqlens=seqlens)
 
         self.D_vars.extend(d_vars)
 
@@ -169,7 +169,7 @@ class LSTM:
         dir = self.saver.save(self.sess, './model_saves/{}/{}_{}'.format(self.model_name, self.model_name, 'end_sess'))
         self.sess.close()
 
-    def discriminator(self, inputs):
+    def discriminator(self, inputs, seqlens=None):
         """
 
         :param inputs: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) the inputs to the discriminator lstm
@@ -183,7 +183,7 @@ class LSTM:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
             #                                                  sequence_length=self.seq_len)
             discriminator_outputs, states = tf.nn.bidirectional_dynamic_rnn(self.discriminator_lstm_cell_fw,
-                self.discriminator_lstm_cell_bw, discriminator_inputs, dtype=tf.float32)
+                self.discriminator_lstm_cell_bw, discriminator_inputs, dtype=tf.float32, sequence_length=seqlens)
             #discriminator_outputs_fw, discriminator_outputs_bw = discriminator_outputs
             #discriminator_outputs = tf.add(discriminator_outputs_fw, discriminator_outputs_bw)
             d_vars = scope.trainable_variables()
@@ -193,23 +193,31 @@ class LSTM:
                                           outputs, name='D_')
         return classifications, outputs, d_vars
 
-    def generator(self):
+    def block_generator(self):
         """
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
-
-        inputs = tf.Variable(tf.random_uniform([self.batch_size, self.time_steps, 1], minval=0, maxval=10))
-        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
-
+        state = self.generator_lstm_cell.zero_state(self.batch_size, dtype=tf.float32)
+        notes = tf.Variable(tf.zeros((1, self.batch_size, self.num_features)), dtype=tf.float32)
+        self.num_stopped = 0
+        seq_lens = tf.Variable(tf.zeros(self.batch_size, dtype=tf.int32), dtype=tf.int32)
+        inputs = np.random.uniform(low=0, high=10, size=[self.max_song_len, self.batch_size, 1])
+        time_step=0
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
+            for input in inputs:
 
-            generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, generator_inputs, dtype=tf.float32)
+                input = tf.Variable(input, dtype=tf.float32)
+                generator_inputs = tf.nn.relu(tf.matmul(input, self.G_W0) + self.G_b0)
+                output, state = self.generator_lstm_cell(generator_inputs, state)
+                note = tf.matmul(output, self.G_W1)+self.G_b1
+                notes = tf.concat([tf.cast(notes, dtype=tf.float32), tf.expand_dims(note, dim=0)], 0)
+                ended = tf.where(tf.greater(tf.transpose(note), 1)[4], tf.constant(time_step, dtype=tf.int32, shape=[self.batch_size]), seq_lens)
+                endedandzero = tf.where(tf.equal(seq_lens, 0), ended, seq_lens)
+                seq_lens = endedandzero
+                time_step += 1
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1)+self.G_b1,
-                                      generator_outputs,
-                                      name='G_')
 
-        return generator_outputs, g_vars
+        return tf.transpose(notes, perm=(1,0,2)), seq_lens, g_vars
 
     def generate_sequence(self, num_songs, num_steps):
         """
@@ -259,7 +267,7 @@ class LSTM:
                 tqdm.write('Sequence generated')
                 tqdm.write('Error {}'.format(err))
 
-    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100, time_steps=100):
+    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100, max_song_len=5000):
         """
 
         :param training_input:
@@ -274,7 +282,7 @@ class LSTM:
         tqdm.write('Beginning LSTM training for {0} epochs at report interval {1}'.format(epochs, report_interval))
         train_G = True
 
-        self.time_steps=time_steps
+        self.max_song_len=max_song_len
         iter_ = tqdm(range(epochs), desc="{0}.learn".format(self.model_name), ascii=True)
         max_seqlen = max(map(len, training_expected))
         unbatched_training_expected = training_expected
