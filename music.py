@@ -29,7 +29,7 @@ song_directory = './classical'
 learning_rate_G = .1
 lr = .1
 #learning_rate_D = .01
-batch_size = 20
+batch_size = 2
 pretraining_epochs = 4
 load_from_saved = False
 epochs = 300
@@ -46,11 +46,11 @@ lstm = LSTM(model_name, num_features, layer_units, batch_size, g_lr=learning_rat
 
 lstm.start_sess(load_from_saved=load_from_saved)
 
-expected_output, seqlens = process_data(songs, n_steps)
+seqlens = [len(songs[i]) for i in range(len(songs))]
+print(seqlens)
+expected_output = [songs[i] for i in range(len(songs))]
 
-lstm.trainLSTM(expected_output, epochs=pretraining_epochs, report_interval=1, time_steps=n_steps, seqlens=seqlens, batch_size=batch_size)
-
-lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size)
+lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size, max_song_len=5000)
 
 lstm.end_sess()
 

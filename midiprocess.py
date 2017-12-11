@@ -58,6 +58,8 @@ def save_to_midi_file(song_array, name):
                 song_array[i][j] = 127
             elif song_array[i][j] < 0:
                 song_array[i][j] = 0
+        if song_array[i][4] >= 1:
+            break
         track.append(mido.Message('note_on', note=int(song_array[i][0]), velocity=int(song_array[i][1]), time=int(round(song_array[i][2], 0))))
 
     mid.save(name)
@@ -87,7 +89,8 @@ def convert_timestamps_to_notes(song):
                     #otherwise, it's just the time after the current note
                     break
 
-            new_song.append([song[i][0], song[i][1], note_length, time_till_next_note])
+            song_stop = 0 if i < len(song) - 1 else 1
+            new_song.append([song[i][0], song[i][1], note_length, time_till_next_note, song_stop])
 
     return new_song
 

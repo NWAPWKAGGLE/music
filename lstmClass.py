@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, max_song_len=50):
+    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, max_song_len=1):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -42,16 +42,15 @@ class LSTM:
         self.x = tf.placeholder(tf.float32, (None, None, 1), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
-
         self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.random_normal([1, self.layer_units], stddev=.1), name='G_W0')
-            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='G_b0')
-            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=.1), name='G_b1')
+            self.G_W0 = tf.Variable(tf.truncated_normal([1, self.layer_units], stddev=.1), name='G_W0')
+            self.G_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='G_b0')
+            self.G_W1 = tf.Variable(tf.truncated_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
+            self.G_b1 = tf.Variable(tf.truncated_normal([self.num_features], stddev=.1), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
 
@@ -62,10 +61,10 @@ class LSTM:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=.1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=.1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.truncated_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
+            self.D_b0 = tf.Variable(tf.truncated_normal([self.layer_units], stddev=.1), name='D_b0')
+            self.D_W1 = tf.Variable(tf.truncated_normal([self.layer_units, 1], stddev=.1), name='D_W1')
+            self.D_b1 = tf.Variable(tf.truncated_normal([1], stddev=.1), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -76,7 +75,6 @@ class LSTM:
             self.D_vars.extend(bw_vars)
             self.D_vars.extend(scope.trainable_variables())
 
-        print(self.G_vars)
         self.states = None
 
         self.G_sample, seqlens, g_vars = self.block_generator()
@@ -120,7 +118,7 @@ class LSTM:
         D_grads = tf.gradients(self.D_loss, self.D_vars)
         D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
-
+        print(self.D_vars)
         self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
         self.G_optimizer = tf.train.AdamOptimizer(self.g_lr, name='G_optimizer')
 
@@ -296,13 +294,14 @@ class LSTM:
             seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
+            print(seqlens)
             for k in tqdm(range(len(training_expected))):
-
-
+                thisseqlens = seqlens[k].tolist()
+                print(thisseqlens)
                 G_sample, G_err, D_err, real_count, fake_count = self.sess.run(
                     [self.G_sample, self.G_loss, self.D_loss, self.D_real, self.D_fake],
                     feed_dict={self.y: training_expected[k],
-                               self.seq_len: seqlens[k]})
+                               self.seq_len: thisseqlens})
 
                 if  (G_err *.7 > D_err):
                     train_D = False
@@ -312,31 +311,30 @@ class LSTM:
 
                 if train_G:
                     self.sess.run(self.g_optimize,
-                                  feed_dict={self.y: training_expected[k],self.seq_len: seqlens[k]})
+                                  feed_dict={self.y: training_expected[k],self.seq_len: thisseqlens})
                 if train_D:
                     self.sess.run(self.d_optimize,
                                   feed_dict={self.y: training_expected[k],
-                                             self.seq_len: seqlens[k]})
+                                             self.seq_len: thisseqlens})
 
                 print(G_sample)
 
             if i % report_interval == 0:
+                if(G_err):
+                    self._save((G_err, D_err), i, epochs) # save checkpoint of the model
+                    self._progress_sequence((G_err, D_err), i, epochs) #Print a generated sequence for qualitative evaluation
 
 
-                self._save((G_err, D_err), i, epochs) # save checkpoint of the model
-                self._progress_sequence((G_err, D_err), i, epochs) #Print a generated sequence for qualitative evaluation
+                    #print stats for diagnostics
 
+                    tqdm.write('Real Count {}'.format(real_count))
 
-                #print stats for diagnostics
-
-                tqdm.write('Real Count {}'.format(real_count))
-
-                tqdm.write('Fake Count {}'.format(fake_count))
-                tqdm.write('Sequence generated')
-                tqdm.write('G Error {}'.format(
-                    G_err))
-                tqdm.write('D Error {}'.format(
-                    D_err))
+                    tqdm.write('Fake Count {}'.format(fake_count))
+                    tqdm.write('Sequence generated')
+                    tqdm.write('G Error {}'.format(
+                        G_err))
+                    tqdm.write('D Error {}'.format(
+                        D_err))
 
     def _save(self, err, i, epochs, save_dir='./model_saves'):
         try:
