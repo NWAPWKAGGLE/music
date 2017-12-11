@@ -136,9 +136,9 @@ class LSTM:
         for i in range(num_layers):
             with tf.variable_scope('layer_{0}'.format(i)) as scope:
                 if (use_relu6):
-                    cell=tf.contrib.rnn.LSTMCell(layer_units, forget_bias = 1.0, activation=tf.nn.relu6)
+                    cell=tf.contrib.rnn.LSTMCell(layer_units, forget_bias = .9, activation=tf.nn.relu6)
                 else:
-                    cell = tf.contrib.rnn.GRUCell(layer_units)
+                    cell = tf.contrib.rnn.LSTMCell(layer_units, forget_bias = 1.0)
                 cell_list.append(tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=.5))
                 var_list.extend(scope.trainable_variables())
         return tf.contrib.rnn.MultiRNNCell(cell_list), var_list
