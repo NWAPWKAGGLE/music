@@ -15,7 +15,7 @@ def split_list(l, n):
     return list
 
 class LSTM:
-    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, max_song_len=1):
+    def __init__(self, model_name, num_features, layer_units, batch_size, g_lr=.1, d_lr=.1, lr=.001, num_layers=2, feature_matching = True, max_song_len=100):
         """
         :param model_name: (path, string) the name of the model, for saving and loading
         :param num_features: (int) the number of features the model uses (156 in this case)
@@ -42,7 +42,7 @@ class LSTM:
         self.x = tf.placeholder(tf.float32, (None, None, 1), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
-        self.seq_len = tf.placeholder(tf.int32, (None,), name='seq_lens')
+        self.seq_len = tf.placeholder(tf.int32, (self.batch_size), name='seq_lens')
 
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
@@ -77,7 +77,7 @@ class LSTM:
 
         self.states = None
 
-        self.G_sample, seqlens, g_vars = self.block_generator()
+        self.G_sample, seqlens, g_vars, self.len_inputs = self.block_generator()
 
         self.G_vars.extend(g_vars)
 
@@ -196,26 +196,30 @@ class LSTM:
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
         state = self.generator_lstm_cell.zero_state(self.batch_size, dtype=tf.float32)
-        notes = tf.Variable(tf.zeros((1, self.batch_size, self.num_features)), dtype=tf.float32)
+        notes = []
         self.num_stopped = 0
-        seq_lens = tf.Variable(tf.zeros(self.batch_size, dtype=tf.int32), dtype=tf.int32)
-        inputs = np.random.uniform(low=0, high=10, size=[self.max_song_len, self.batch_size, 1])
+        seq_lens = tf.Variable(tf.zeros([self.batch_size], dtype=tf.int32), dtype=tf.int32)
+        inputs = np.random.uniform(low=0, high=10, size=[self.max_song_len,self.batch_size, 1])
         time_step=0
+        print("Starting Generator")
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
-            for input in inputs:
 
-                input = tf.Variable(input, dtype=tf.float32)
+            for i in range(len(inputs)):
+
+                input = tf.Variable(inputs[i], dtype=tf.float32)
                 generator_inputs = tf.nn.relu(tf.matmul(input, self.G_W0) + self.G_b0)
                 output, state = self.generator_lstm_cell(generator_inputs, state)
                 note = tf.matmul(output, self.G_W1)+self.G_b1
-                notes = tf.concat([tf.cast(notes, dtype=tf.float32), tf.expand_dims(note, dim=0)], 0)
+                notes.append(tf.expand_dims(note, dim=0))
                 ended = tf.where(tf.greater(tf.transpose(note), 1)[4], tf.constant(time_step, dtype=tf.int32, shape=[self.batch_size]), seq_lens)
                 endedandzero = tf.where(tf.equal(seq_lens, 0), ended, seq_lens)
                 seq_lens = endedandzero
                 time_step += 1
-            g_vars = scope.trainable_variables()
+                print(time_step)
 
-        return tf.transpose(notes, perm=(1,0,2)), seq_lens, g_vars
+            g_vars = scope.trainable_variables()
+        print("hey")
+        return tf.transpose(tf.concat(notes, 0), perm=(1,0,2)), seq_lens, g_vars, len(inputs)
 
     def generate_sequence(self, num_songs, num_steps):
         """
@@ -225,7 +229,7 @@ class LSTM:
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
 
-        output = self.sess.run(self.G_sample, feed_dict={self.seq_len: [num_steps for i in range(num_songs)]})
+        output = self.sess.run(self.G_sample)
 
         # set states to None in case generate Sequence is used
         return output
@@ -294,15 +298,14 @@ class LSTM:
             seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
-            print(seqlens)
             for k in tqdm(range(len(training_expected))):
-                thisseqlens = seqlens[k].tolist()
-                print(thisseqlens)
+
+                training_expected_batch = training_expected[k]
+
                 G_sample, G_err, D_err, real_count, fake_count = self.sess.run(
                     [self.G_sample, self.G_loss, self.D_loss, self.D_real, self.D_fake],
-                    feed_dict={self.y: training_expected[k],
-                               self.seq_len: thisseqlens})
-
+                    feed_dict={self.y: training_expected_batch})
+                print(self.len_inputs)
                 if  (G_err *.7 > D_err):
                     train_D = False
                     print("Stopping D")
@@ -311,13 +314,11 @@ class LSTM:
 
                 if train_G:
                     self.sess.run(self.g_optimize,
-                                  feed_dict={self.y: training_expected[k],self.seq_len: thisseqlens})
+                                  feed_dict={self.y: training_expected_batch})
                 if train_D:
                     self.sess.run(self.d_optimize,
-                                  feed_dict={self.y: training_expected[k],
-                                             self.seq_len: thisseqlens})
+                                  feed_dict={self.y: training_expected_batch})
 
-                print(G_sample)
 
             if i % report_interval == 0:
                 if(G_err):
