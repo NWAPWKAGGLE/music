@@ -39,7 +39,7 @@ class LSTM:
         self.writer = None
         # build model - this part should probably be abstracted somehow,
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
-        self.x = tf.placeholder(tf.float32, (None, None, 1), name='x')
+        self.x = tf.placeholder(tf.float32, (None, None, self.layer_units), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
 
@@ -79,7 +79,7 @@ class LSTM:
         print(self.G_vars)
         self.states = None
 
-        self.G_sample, g_vars = self.generator()
+        self.G_sample, g_vars = self.generator(self.x)
 
         self.G_vars.extend(g_vars)
 
@@ -193,13 +193,13 @@ class LSTM:
                                           outputs, name='D_')
         return classifications, outputs, d_vars
 
-    def generator(self):
+    def generator(self, input):
         """
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
-        inputs = tf.Variable(tf.random_uniform([self.batch_size, self.time_steps, 1], minval=0, maxval=10))
-        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+        generator_inputs = input
+        #generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
 
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
 
@@ -213,13 +213,13 @@ class LSTM:
 
     def generate_sequence(self, num_songs, num_steps):
         """
-
         :param starter: (np.ndarray) starter sequence to use for recursive generation
         :param numsteps: (int) the number of timesteps to generate
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
+        inputs = np.random.uniform(0, 10, [1, self.time_steps, self.layer_units])
 
-        output = self.sess.run(self.G_sample, feed_dict={self.seq_len: [num_steps for i in range(num_songs)]})
+        output = self.sess.run(self.G_sample, feed_dict={self.x: inputs, self.seq_len: [num_steps for i in range(num_songs)]})
 
         # set states to None in case generate Sequence is used
         return output
@@ -242,6 +242,7 @@ class LSTM:
         unbatched_training_expected = training_expected
         unbatched_seqlens = seqlens
         for i in iter_:
+
             idx = np.arange(len(unbatched_training_expected))
             np.random.shuffle(idx)
             training_expected = [unbatched_training_expected[i] for i in idx]
@@ -249,11 +250,13 @@ class LSTM:
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
             for k in tqdm(range(len(training_expected))):
-                self.sess.run(self.optimize, feed_dict={self.y: training_expected[k], self.seq_len: seqlens[k]})
+                inputs = np.random.uniform(0, 10, [self.batch_size, self.time_steps, self.layer_units])
+
+                self.sess.run(self.optimize, feed_dict={self.x: inputs, self.y: training_expected[k], self.seq_len: seqlens[k]})
 
             if i % report_interval == 0:
                 err = self.sess.run(self.cost,
-                                    feed_dict={self.y: training_expected[-1], self.seq_len: seqlens[-1]})
+                                    feed_dict={self.x: inputs, self.y: training_expected[-1], self.seq_len: seqlens[-1]})
                 self._save(err, i, epochs)
                 self._progress_sequence(err, i, epochs)
                 tqdm.write('Sequence generated')
@@ -289,11 +292,11 @@ class LSTM:
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
             for k in tqdm(range(len(training_expected))):
-
+                inputs = np.random.uniform(0, 10, [self.batch_size, self.time_steps, self.layer_units])
 
                 G_sample, G_err, D_err, real_count, fake_count = self.sess.run(
                     [self.G_sample, self.G_loss, self.D_loss, self.D_real, self.D_fake],
-                    feed_dict={self.y: training_expected[k],
+                    feed_dict={self.x: inputs, self.y: training_expected[k],
                                self.seq_len: seqlens[k]})
 
                 if  (G_err *.7 > D_err):
@@ -304,10 +307,10 @@ class LSTM:
 
                 if train_G:
                     self.sess.run(self.g_optimize,
-                                  feed_dict={self.y: training_expected[k],self.seq_len: seqlens[k]})
+                                  feed_dict={self.x: inputs, self.y: training_expected[k],self.seq_len: seqlens[k]})
                 if train_D:
                     self.sess.run(self.d_optimize,
-                                  feed_dict={self.y: training_expected[k],
+                                  feed_dict={self.x: inputs, self.y: training_expected[k],
                                              self.seq_len: seqlens[k]})
 
                 print(G_sample)

@@ -29,8 +29,8 @@ song_directory = './classical'
 learning_rate_G = .1
 lr = .1
 #learning_rate_D = .01
-batch_size = 20
-pretraining_epochs = 4
+
+pretraining_epochs = 6
 load_from_saved = False
 epochs = 300
 num_features = 4
@@ -39,14 +39,13 @@ discriminator_lr = .1
 n_steps = 100 # time steps
 max_songs = 400
 report_interval = 1
-
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
+expected_output, seqlens = process_data(songs, n_steps)
+batch_size = int(sum(seqlens)/n_steps - 1)
 
 lstm = LSTM(model_name, num_features, layer_units, batch_size, g_lr=learning_rate_G, d_lr=discriminator_lr, lr=lr)
 
 lstm.start_sess(load_from_saved=load_from_saved)
-
-expected_output, seqlens = process_data(songs, n_steps)
 
 lstm.trainLSTM(expected_output, epochs=pretraining_epochs, report_interval=1, time_steps=n_steps, seqlens=seqlens, batch_size=batch_size)
 
