@@ -39,7 +39,7 @@ class LSTM:
         self.writer = None
         # build model - this part should probably be abstracted somehow,
         # good ideas on how to do that possibly here https://danijar.com/structuring-your-tensorflow-models/
-        self.x = tf.placeholder(tf.float32, (None, None, self.layer_units), name='x')
+        self.x = tf.placeholder(tf.float32, (None, None, self.num_features), name='x')
         self.y = tf.placeholder(tf.float32, (None, None, self.num_features), name='y')
 
 
@@ -48,12 +48,12 @@ class LSTM:
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.random_normal([1, self.layer_units], stddev=.1), name='G_W0')
+            self.G_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.1), name='G_W0')
             self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='G_b0')
             self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
             self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=.1), name='G_b1')
 
-            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers, use_relu6=True)
+            self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
             self.G_vars.extend(gen_vars)
             self.G_vars.extend(scope.trainable_variables())
@@ -177,7 +177,7 @@ class LSTM:
         (single values denoting real or fake samples)
         """
         discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
-                                        inputs, name='D_before')
+                                         inputs, name='D_before')
 
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
             #discriminator_outputs, states = tf.nn.dynamic_rnn(self.discriminator_lstm_cell, inputs, dtype=tf.float32,
@@ -193,13 +193,13 @@ class LSTM:
                                           outputs, name='D_')
         return classifications, outputs, d_vars
 
-    def generator(self, input):
+    def generator(self, inputs):
         """
         :return: (tf.Tensor, shape: (Batch_Size, Time_Steps, Num_Features)) outputs from the generator lstm
         """
 
-        generator_inputs = input
-        #generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+        #generator_inputs = inputs
+        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
 
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
 
@@ -217,7 +217,7 @@ class LSTM:
         :param numsteps: (int) the number of timesteps to generate
         :return: (np.ndarray, shape: (num_songs, numsteps, num_features)) an array of songs
         """
-        inputs = np.random.uniform(0, 10, [1, self.time_steps, self.layer_units])
+        inputs = np.random.normal(0, 1, [1, self.time_steps, self.num_features])
 
         output = self.sess.run(self.G_sample, feed_dict={self.x: inputs, self.seq_len: [num_steps for i in range(num_songs)]})
 
@@ -250,7 +250,7 @@ class LSTM:
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
             for k in tqdm(range(len(training_expected))):
-                inputs = np.random.uniform(0, 10, [self.batch_size, self.time_steps, self.layer_units])
+                inputs = np.random.normal(0, 1, [self.batch_size, self.time_steps, self.num_features])
 
                 self.sess.run(self.optimize, feed_dict={self.x: inputs, self.y: training_expected[k], self.seq_len: seqlens[k]})
 
@@ -292,14 +292,14 @@ class LSTM:
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
             for k in tqdm(range(len(training_expected))):
-                inputs = np.random.uniform(0, 10, [self.batch_size, self.time_steps, self.layer_units])
+                inputs = np.random.normal(0, 1, [self.batch_size, self.time_steps, self.num_features])
 
                 G_sample, G_err, D_err, real_count, fake_count = self.sess.run(
                     [self.G_sample, self.G_loss, self.D_loss, self.D_real, self.D_fake],
                     feed_dict={self.x: inputs, self.y: training_expected[k],
                                self.seq_len: seqlens[k]})
 
-                if  (G_err *.7 > D_err):
+                if  (G_err*1.5 > D_err):
                     train_D = False
                     print("Stopping D")
                 else:

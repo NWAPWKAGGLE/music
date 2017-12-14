@@ -104,6 +104,12 @@ def convert_notes_to_timestamps(song):
         #array of notes that are ending before the next note starts
         ending_notes = []
 
+        for j in range(4):
+            if song[i][j] > 127:
+                song[i][j] = 127
+            elif song[i][j] < 0:
+                song[i][j] = 0
+
         for j in range (i+1):
 
             if (time_till_note_end[j] > 0) and (time_till_note_end[j] <= song[i][3]):
