@@ -48,10 +48,10 @@ class LSTM:
         with tf.variable_scope('generator') as scope:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.G_vars = []
-            self.G_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.1), name='G_W0')
-            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='G_b0')
-            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=.1), name='G_W1')
-            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=.1), name='G_b1')
+            self.G_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.5), name='G_W0')
+            self.G_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.5), name='G_b0')
+            self.G_W1 = tf.Variable(tf.random_normal([self.layer_units, self.num_features], stddev=.5), name='G_W1')
+            self.G_b1 = tf.Variable(tf.random_normal([self.num_features], stddev=.5), name='G_b1')
 
             self.generator_lstm_cell, gen_vars = self.lstm_cell_construct(layer_units, num_layers)
 
@@ -62,10 +62,10 @@ class LSTM:
             scope.set_regularizer(tf.contrib.layers.l2_regularizer(scale=1.0))
             self.D_vars = []
 
-            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.1), name='D_W0')
-            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.1), name='D_b0')
-            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=.1), name='D_W1')
-            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=.1), name='D_b1')
+            self.D_W0 = tf.Variable(tf.random_normal([self.num_features, self.layer_units], stddev=.5), name='D_W0')
+            self.D_b0 = tf.Variable(tf.random_normal([self.layer_units], stddev=.5), name='D_b0')
+            self.D_W1 = tf.Variable(tf.random_normal([self.layer_units, 1], stddev=.5), name='D_W1')
+            self.D_b1 = tf.Variable(tf.random_normal([1], stddev=.5), name='D_b1')
 
             with tf.variable_scope('fw') as subscope:
                 self.discriminator_lstm_cell_fw, fw_vars = self.lstm_cell_construct(layer_units, num_layers)
@@ -98,12 +98,10 @@ class LSTM:
         self.D_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_real, 1e-1000000, 1.0))
                                      - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))+reg_loss
 
-        self.G_loss = -tf.reduce_mean(tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))+reg_loss
+        self.G_loss = tf.reduce_mean(tf.squared_difference(self.D_real_feature_matching, self.D_fake_feature_matching))+reg_loss
 
-        self.G_loss_feature_matching = tf.reduce_mean(tf.squared_difference(self.D_real_feature_matching, self.D_fake_feature_matching))+reg_loss
 
-        if feature_matching:
-            self.G_loss = self.G_loss_feature_matching
+        #self.G_loss_feature_matching = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))+reg_loss
 
         self.cost = tf.identity(tf.losses.mean_squared_error(self.y, self.G_sample), name='cost')+reg_loss
         optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
@@ -176,7 +174,7 @@ class LSTM:
         :return: (tf.Tensor, (Batch_Size, Time_Steps, 1)) the outputs of the discriminator lstm
         (single values denoting real or fake samples)
         """
-        discriminator_inputs = tf.map_fn(lambda output: tf.nn.relu(tf.matmul(output, self.D_W0) + self.D_b0),
+        discriminator_inputs = tf.map_fn(lambda output: tf.matmul(output, self.D_W0) + self.D_b0,
                                          inputs, name='D_before')
 
         with tf.variable_scope('discriminator_lstm_layer{0}'.format(1)) as scope:
@@ -189,8 +187,8 @@ class LSTM:
             d_vars = scope.trainable_variables()
         outputs_fw, outputs_bw = discriminator_outputs
         outputs = tf.add(outputs_fw, outputs_bw)
-        classifications = tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
-                                          outputs, name='D_')
+        classifications = tf.reduce_mean(tf.map_fn(lambda output: tf.sigmoid(tf.matmul(output, self.D_W1) + self.D_b1),
+                                          outputs, name='D_'))
         return classifications, outputs, d_vars
 
     def generator(self, inputs):
@@ -199,13 +197,13 @@ class LSTM:
         """
 
         #generator_inputs = inputs
-        generator_inputs = tf.map_fn(lambda input: tf.nn.relu(tf.matmul(input, self.G_W0)+self.G_b0), inputs)
+        generator_inputs = tf.map_fn(lambda input: tf.matmul(input, self.G_W0)+self.G_b0, inputs)
 
         with tf.variable_scope('generator_lstm_layer{0}'.format(1)) as scope:
 
             generator_outputs, states = tf.nn.dynamic_rnn(self.generator_lstm_cell, generator_inputs, dtype=tf.float32)
             g_vars = scope.trainable_variables()
-        generator_outputs = tf.map_fn(lambda output: tf.matmul(output, self.G_W1)+self.G_b1,
+        generator_outputs = tf.map_fn(lambda output: 127*tf.sigmoid(tf.matmul(output, self.G_W1)+self.G_b1),
                                       generator_outputs,
                                       name='G_')
 
@@ -299,9 +297,8 @@ class LSTM:
                     feed_dict={self.x: inputs, self.y: training_expected[k],
                                self.seq_len: seqlens[k]})
 
-                if  (G_err*1.5 > D_err):
+                if fake_count < .3 and real_count > .6:
                     train_D = False
-                    print("Stopping D")
                 else:
                     train_D = True
 
@@ -320,7 +317,6 @@ class LSTM:
 
                 self._save((G_err, D_err), i, epochs) # save checkpoint of the model
                 self._progress_sequence((G_err, D_err), i, epochs) #Print a generated sequence for qualitative evaluation
-
 
                 #print stats for diagnostics
 

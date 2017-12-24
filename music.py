@@ -24,20 +24,20 @@ def process_data(songs, n_steps):
     seqlens = [n_steps for i in range(len(expected_output))]
     return expected_output, seqlens
 
-model_name = 'C_RNN_GAN_V3_B1'
+model_name = 'C_RNN_GAN_V3_C1'
 song_directory = './classical'
-learning_rate_G = .05
-lr = .05
+learning_rate_G = .1
+lr = .1
 #learning_rate_D = .01
 
-pretraining_epochs = 6
+pretraining_epochs = 10
 load_from_saved = False
-epochs = 300
+epochs = 50
 num_features = 4
-layer_units = 200
-discriminator_lr = .05
-n_steps = 100 # time steps
-max_songs = 100
+layer_units = 50
+discriminator_lr = .1
+n_steps = 20 # time steps
+max_songs = 20
 report_interval = 1
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 expected_output, seqlens = process_data(songs, n_steps)
