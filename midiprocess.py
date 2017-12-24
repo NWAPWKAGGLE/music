@@ -95,10 +95,10 @@ def convert_timestamps_to_notes(song):
     return new_song
 
 def convert_notes_to_timestamps(song):
-
+    print(song)
     #keep track of how much time there is before a note ends
     time_till_note_end = [song[i][2] for i in range(len(song))]
-    print(time_till_note_end)
+
     new_song = []
 
     #loop through the song
@@ -107,20 +107,23 @@ def convert_notes_to_timestamps(song):
         #array of notes that are ending before the next note starts
         ending_notes = []
 
-        for j in range (i+1):
-
+        for j in range (i):
             if (time_till_note_end[j] >= 0) and (time_till_note_end[j] < song[i][3]):
+                if (song[j][0] == 61):
+                    print(i)
+                    print(time_till_note_end[j])
                 ending_notes.append([j, time_till_note_end[j]])
 
         ending_notes = sorted(ending_notes, key=lambda x: x[1])
-        print(ending_notes)
+
         for k in range(len(ending_notes)):
             if (k != len(ending_notes)-1):
                 new_song.append([song[ending_notes[k][0]][0], 0, time_till_note_end[ending_notes[k+1][0]]-time_till_note_end[ending_notes[k][0]]])
             else:
                 new_song.append([song[ending_notes[k][0]][0], 0, time_till_note_end[ending_notes[k][0]]])
 
-        for h in range(i):
+        for h in range(i+1):
+            current_time = time_till_note_end[h]
             time_till_note_end[h] -= song[i][3]
 
         if (song[i][2] > song[i][3]):
@@ -133,5 +136,7 @@ def convert_notes_to_timestamps(song):
 test_song = get_song('./classical/mond_1.mid')
 converted_song = convert_timestamps_to_notes(test_song)
 original = convert_notes_to_timestamps(converted_song)
-
+for i in range(10):
+    print(test_song[i])
+    print(original[i])
 save_to_midi_file(converted_song, "./mond_1.mid")
