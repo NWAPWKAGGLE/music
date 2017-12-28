@@ -88,8 +88,6 @@ def convert_timestamps_to_notes(song):
                 if (song[k][1] != 0):
                     break
 
-
-
             for j in range(len(song)-i-1):
 
                 k=i+j+1
