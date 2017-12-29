@@ -26,18 +26,17 @@ def process_data(songs, n_steps):
 
 model_name = 'C_RNN_GAN_V3_D1'
 song_directory = './classical'
-learning_rate_G = .1
-lr = .1
-#learning_rate_D = .01
-
-pretraining_epochs = 10
-load_from_saved = False
-epochs = 50
+learning_rate_G = .005
+lr = .01
+discriminator_lr = .005
+pretraining_epochs = 30
+epochs = 100
+load_from_saved = True
 num_features = 4
-layer_units = 50
-discriminator_lr = .1
-n_steps = 20 # time steps
-max_songs = 20
+layer_units = 200
+max_n_steps = 100 # time steps
+n_steps = 4
+max_songs = 400
 report_interval = 1
 songs = midiprocess.get_songs(song_directory, model_name, max_songs)
 expected_output, seqlens = process_data(songs, n_steps)
@@ -49,7 +48,12 @@ lstm.start_sess(load_from_saved=load_from_saved)
 
 lstm.trainLSTM(expected_output, epochs=pretraining_epochs, report_interval=1, time_steps=n_steps, seqlens=seqlens, batch_size=batch_size)
 
-lstm.trainAdversarially(expected_output, epochs, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size, time_steps=n_steps)
+for i in tqdm(range(epochs)):
+    expected_output, seqlens = process_data(songs, n_steps)
+    batch_size = int(sum(seqlens) / n_steps - 1)
+    lstm.trainAdversarially(expected_output, 10, report_interval=report_interval, seqlens=seqlens, batch_size=batch_size, time_steps=n_steps)
+    if n_steps < max_n_steps:
+        n_steps += 4
 
 lstm.end_sess()
 
