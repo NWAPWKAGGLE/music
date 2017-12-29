@@ -3,10 +3,7 @@ from tqdm import tqdm
 import numpy as np
 
 import mido
-test_song = [[30, 33, 0],
-             [40, 33, 1],
-             [30, 0, 0],
-             [40, 0, 0]]
+
 def get_song(path):
     '''
     :param path: path to the song
@@ -37,7 +34,11 @@ def get_songs(path, model_name, max=None):
     songs = []
 
     for f in tqdm(files):
-        songs.append(np.array(convert_timestamps_to_notes(get_song(f))))
+        try:
+            song = get_song(f)
+        except:
+            continue
+        songs.append(np.array(convert_timestamps_to_notes(song)))
     return songs
 
 def save_to_midi_file(song_array, name):
