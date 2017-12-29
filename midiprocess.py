@@ -3,10 +3,7 @@ from tqdm import tqdm
 import numpy as np
 
 import mido
-test_song = [[30, 33, 0],
-             [40, 33, 1],
-             [30, 0, 0],
-             [40, 0, 0]]
+
 def get_song(path):
     '''
     :param path: path to the song
@@ -26,19 +23,39 @@ def get_song(path):
             time_between += msg.time
     return song
 
-def get_songs(path, model_name, max=None):
+def get_songs(datadir, max_per_composer=None):
     '''
     :param path: path to the songs directory
     :return: array of songs w/ timestamp events
     '''
-    files = glob.glob('{}/*.mid*'.format(path))
-    files = files[:max] if max is not None else files
 
+    paths = glob.glob('{}/*'.format(datadir))
     songs = []
+    song_composer_index = []
+    composers = []
 
-    for f in tqdm(files):
-        songs.append(np.array(convert_timestamps_to_notes(get_song(f))))
-    return songs
+    for index, path in tqdm(enumerate(paths)):
+        if index > 4:
+            break
+        composers.append(path.split('/')[-1])
+        files = glob.glob('{}/*.mid*'.format(path))
+        files = files[:max_per_composer] if max_per_composer is not None else files
+
+        for f in files:
+            song_composer_index.append(index)
+            try:
+                song =  get_song(f)
+            except:
+                continue
+            songs.append(np.array(convert_timestamps_to_notes(song)))
+
+    composer_file = open('./composer-index.txt', 'w')
+
+    for index, composer in enumerate(composers):
+        composer_file.write('{}: {}\n'.format(index, composer))
+    composer_file.close()
+
+    return songs, song_composer_index
 
 def save_to_midi_file(song_array, name):
     for i in range(len(song_array)):
@@ -120,7 +137,7 @@ def convert_notes_to_timestamps(song):
 
 
 
-        new_song.append([song[i][0], song[i][1], time_from_last_note])
+        new_song.append([song[i][0], song[i][1], round(time_from_last_note, 5)])
 
         ending_notes = []
 
@@ -128,7 +145,7 @@ def convert_notes_to_timestamps(song):
         for j in range(i+1):
             if (i < len(song)-2):
                 if (round(time_till_note_end[j], 5) > 0) and (round(time_till_note_end[j], 5) <= round(song[i][3], 5)):
-                    ending_notes.append([j, time_till_note_end[j]])
+                    ending_notes.append([j, round(time_till_note_end[j], 5)])
 
         ending_notes = sorted(ending_notes, key=lambda x: x[1])
         if (len(ending_notes) != 0):

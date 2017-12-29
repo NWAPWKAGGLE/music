@@ -83,6 +83,8 @@ class LSTM:
 
         self.G_vars.extend(g_vars)
 
+
+
         self.D_real, self.D_real_feature_matching, _ = self.discriminator(self.y) # returns same d_vars; unnecessary to use this return value here
         self.D_fake, self.D_fake_feature_matching, d_vars = self.discriminator(self.G_sample)
 
@@ -95,11 +97,7 @@ class LSTM:
         reg_constant = 0.1  # Choose an appropriate one.
         reg_loss = reg_constant * sum(reg_losses)
 
-        self.D_loss = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_real, 1e-1000000, 1.0))
-                                     - tf.log(1 - tf.clip_by_value(self.D_fake, 0.0, 1.0 - 1e-1000000)))+reg_loss
-
-        self.G_loss = tf.reduce_mean(tf.squared_difference(self.D_real_feature_matching, self.D_fake_feature_matching))+reg_loss
-
+        self.G_loss, self.D_loss = self.loss_l2(self.D_real_feature_matching, self.D_fake_feature_matching)
 
         #self.G_loss_feature_matching = tf.reduce_mean(-tf.log(tf.clip_by_value(self.D_fake, 1e-1000000, 1.0)))+reg_loss
 
@@ -110,7 +108,7 @@ class LSTM:
         grads_and_vars = list(zip(grads, self.G_vars))
         self.optimize = optimizer.apply_gradients(grads_and_vars)
 
-        self.D_optimizer = tf.train.GradientDescentOptimizer(self.d_lr)
+        D_optimizer = tf.train.GradientDescentOptimizer(self.d_lr)
 
         self.D_loss = tf.check_numerics(self.D_loss, "NaN D_loss", name=None)
         self.G_loss = tf.check_numerics(self.G_loss, "NaN G_loss", name=None)
@@ -119,13 +117,24 @@ class LSTM:
         D_grads, _ = tf.clip_by_global_norm(D_grads, 5)  # gradient clipping
         D_grads_and_vars = list(zip(D_grads, self.D_vars))
 
-        self.d_optimize = self.D_optimizer.apply_gradients(D_grads_and_vars)
-        self.G_optimizer = tf.train.AdamOptimizer(self.g_lr, name='G_optimizer')
+        self.d_optimize = D_optimizer.apply_gradients(D_grads_and_vars)
+        G_optimizer = tf.train.AdamOptimizer(self.g_lr, name='G_optimizer')
 
         G_grads = tf.gradients(self.G_loss, self.G_vars)
         G_grads, _ = tf.clip_by_global_norm(G_grads, 5)  # gradient clipping
         G_grads_and_vars = list(zip(G_grads, self.G_vars))
-        self.g_optimize = self.G_optimizer.apply_gradients(G_grads_and_vars)
+        self.g_optimize = G_optimizer.apply_gradients(G_grads_and_vars)
+
+    def loss_l2(self, D_logits_real, D_logits_fake):
+        G_loss = tf.reduce_mean(tf.nn.l2_loss(D_logits_fake- tf.ones_like(D_logits_fake)))
+
+        D_loss_real = tf.reduce_mean(tf.nn.l2_loss(D_logits_real - tf.ones_like(D_logits_real)))
+
+        D_loss_fake = tf.reduce_mean(tf.nn.l2_loss(D_logits_fake - tf.zeros_like(D_logits_fake)))
+
+        D_loss = D_loss_real + D_loss_fake
+
+        return G_loss, D_loss
 
     def lstm_cell_construct(self, layer_units, num_layers, use_relu6=False):
 
@@ -260,7 +269,7 @@ class LSTM:
                 tqdm.write('Sequence generated')
                 tqdm.write('Error {}'.format(err))
 
-    def trainAdversarially(self, training_expected, epochs, report_interval=10, seqlens=None, batch_size = 100, time_steps=100):
+    def trainAdversarially(self, training_expected, classes, epochs, report_interval=10, seqlens=None, batch_size = 100, time_steps=100):
         """
 
         :param training_input:
@@ -280,17 +289,25 @@ class LSTM:
         max_seqlen = max(map(len, training_expected))
         unbatched_training_expected = training_expected
         unbatched_seqlens = seqlens
+        unbatched_classes = classes
 
         for i in iter_:
 
             idx = np.arange(len(unbatched_training_expected))
             np.random.shuffle(idx)
+            classes = [unbatched_classes[i] for i in idx]
             training_expected = [unbatched_training_expected[i] for i in idx]
             seqlens = [unbatched_seqlens[i] for i in idx]
             training_expected = split_list(training_expected, batch_size)
             seqlens = split_list(seqlens, batch_size)
+            classes = split_list(classes, batch_size)
             for k in tqdm(range(len(training_expected))):
                 inputs = np.random.normal(0, 1, [self.batch_size, self.time_steps, self.num_features])
+                song_classes = []
+                for i in range(batch_size):
+                    song_class = [classes[k][i] for j in range(self.time_steps)]
+                    song_classes = song_classes + song_class
+                song_classes = split_list(song_classes, self.time_steps)
 
                 G_sample, G_err, D_err, real_count, fake_count = self.sess.run(
                     [self.G_sample, self.G_loss, self.D_loss, self.D_real, self.D_fake],
